@@ -3,13 +3,9 @@ name: skill-flarness
 description: Use Flarness to drive a Flutter project through an AI-friendly development loop with structured JSON output. Use when you need to start a Flutter app, inspect status, run hot reload or restart, capture screenshots or snapshots, inspect the widget tree, query logs, or run flutter analyze through the Flarness daemon.
 ---
 
-# Flarness User
+# skill-flarness
 
 Use this skill when the goal is to operate a Flutter app through Flarness, not to maintain Flarness itself.
-
-Bundled artifact:
-
-- `bin/flarness-darwin-arm64`: bundled Flarness executable for macOS Apple Silicon, copied from this repository so the whole skill folder can be moved or reused directly.
 
 ## What Flarness does
 
@@ -24,6 +20,7 @@ The important operating model is:
 
 ## Preconditions
 
+- `flarness` must already be installed in a system location and available on `PATH`.
 - Flutter must be installed and usable from the shell.
 - The target directory must be a Flutter project with `pubspec.yaml`.
 - The default device is `chrome` if no device is specified.
@@ -60,68 +57,68 @@ The important operating model is:
 Start a project:
 
 ```bash
-./bin/flarness-darwin-arm64 start --project /absolute/path/to/flutter_app --device chrome
+flarness start --project /absolute/path/to/flutter_app --device chrome
 ```
 
 If already inside the Flutter project:
 
 ```bash
-./bin/flarness-darwin-arm64 start
+flarness start
 ```
 
 Check state:
 
 ```bash
-./bin/flarness-darwin-arm64 status
+flarness status
 ```
 
 Reload after edits:
 
 ```bash
-./bin/flarness-darwin-arm64 reload
+flarness reload
 ```
 
 Recover with restart:
 
 ```bash
-./bin/flarness-darwin-arm64 restart
+flarness restart
 ```
 
 Get high-context UI state:
 
 ```bash
-./bin/flarness-darwin-arm64 snapshot
+flarness snapshot
 ```
 
 Inspect widget tree only:
 
 ```bash
-./bin/flarness-darwin-arm64 inspect --max-depth 6
+flarness inspect --max-depth 6
 ```
 
 Capture only a screenshot:
 
 ```bash
-./bin/flarness-darwin-arm64 screenshot
+flarness screenshot
 ```
 
 Look for recent errors:
 
 ```bash
-./bin/flarness-darwin-arm64 errors
-./bin/flarness-darwin-arm64 logs --level error --since 5m
+flarness errors
+flarness logs --level error --since 5m
 ```
 
 Run analyzer:
 
 ```bash
-./bin/flarness-darwin-arm64 analyze
+flarness analyze
 ```
 
 Stop the daemon:
 
 ```bash
-./bin/flarness-darwin-arm64 stop
+flarness stop
 ```
 
 ## How to use results
@@ -144,13 +141,13 @@ Stop the daemon:
 ## Troubleshooting
 
 - Error saying daemon is not running:
-  run `./bin/flarness-darwin-arm64 start` in the Flutter project or pass `--project`.
+  run `flarness start` in the Flutter project or pass `--project`.
 - Error saying no `pubspec.yaml`:
   you are not pointing at a Flutter project root.
 - Reload appears successful but UI is stale:
-  run `./bin/flarness-darwin-arm64 restart`.
+  run `flarness restart`.
 - Need machine-readable command schema:
-  run `./bin/flarness-darwin-arm64 help` or `./bin/flarness-darwin-arm64 help <command>`.
+  run `flarness help` or `flarness help <command>`.
 
 ## Good defaults for an agent using this skill
 
