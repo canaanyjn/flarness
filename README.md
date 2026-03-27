@@ -12,6 +12,7 @@ AI agents are rewriting the development flow. To effectively manage a Flutter ap
 - **Daemon Management**: Run a background flarness daemon to keep the Flutter VM service alive and responsive.
 - **Full Control**: Start, stop, restart, and hot-reload Flutter apps programmatically.
 - **State Inspection**: Capture UI snapshots, screenshots, and analyze project health in real-time.
+- **UI Automation**: Tap, type, wait, scroll, swipe, and long press through Flutter semantics + debug service extensions.
 - **AI-Friendly Help**: A built-in `help` command that outputs command specifications in JSON.
 
 ## 📦 Installation
@@ -45,6 +46,13 @@ flarness status
 flarness snapshot
 ```
 
+### Drive the UI
+```bash
+flarness tap --text "Login"
+flarness type --value "hello@example.com"
+flarness wait --text "Success"
+```
+
 ### Get AI-readable help
 ```bash
 flarness help [command]
@@ -58,9 +66,22 @@ flarness help [command]
 - `restart`: Perform a Hot Restart.
 - `screenshot`: Capture an image of the current screen.
 - `snapshot`: Get a structured tree of the current UI.
+- `semantics`: Dump the semantics tree used for automation.
+- `tap` / `type` / `wait`: Perform basic UI automation.
+- `scroll` / `swipe` / `longpress`: Perform richer gestures.
 - `logs`: Stream recent records from the application log.
 - `status`: Check if the daemon is running and what it's controlling.
 - `help`: Get structural information about these commands.
+
+## Flutter App Integration
+
+Interactive commands require the Flutter app to register `ext.flarness.*`
+service extensions in debug mode.
+
+Use the bundled package:
+
+- [packages/flarness_debug](/Users/tcn/WorkSpace/Programming/Tools/flarness/packages/flarness_debug)
+- [docs/flutter-debug-package.md](/Users/tcn/WorkSpace/Programming/Tools/flarness/docs/flutter-debug-package.md)
 
 ## 🤝 License
 

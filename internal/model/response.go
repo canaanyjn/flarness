@@ -24,15 +24,15 @@ type StopResponse struct {
 
 // StatusResponse is the data payload for the status command.
 type StatusResponse struct {
-	Running bool        `json:"running"`
-	PID     int         `json:"pid,omitempty"`
-	Device  string      `json:"device,omitempty"`
-	Project string      `json:"project,omitempty"`
-	Uptime  string      `json:"uptime,omitempty"`
-	URL     string      `json:"url,omitempty"`
-	LogFile string      `json:"log_file,omitempty"`
-	LogSize string      `json:"log_size,omitempty"`
-	Stats   *LogStats   `json:"stats,omitempty"`
+	Running bool      `json:"running"`
+	PID     int       `json:"pid,omitempty"`
+	Device  string    `json:"device,omitempty"`
+	Project string    `json:"project,omitempty"`
+	Uptime  string    `json:"uptime,omitempty"`
+	URL     string    `json:"url,omitempty"`
+	LogFile string    `json:"log_file,omitempty"`
+	LogSize string    `json:"log_size,omitempty"`
+	Stats   *LogStats `json:"stats,omitempty"`
 }
 
 // LogStats holds log statistics.
@@ -46,8 +46,8 @@ type LogStats struct {
 
 // ReloadResponse is the data payload for reload/restart commands.
 type ReloadResponse struct {
-	Status     string        `json:"status"`
-	DurationMs int64         `json:"duration_ms"`
+	Status     string         `json:"status"`
+	DurationMs int64          `json:"duration_ms"`
 	Errors     []CompileError `json:"errors"`
 	Warnings   []CompileError `json:"warnings"`
 }
@@ -69,8 +69,8 @@ type LogsResponse struct {
 
 // AnalyzeResponse is the data payload for the analyze command.
 type AnalyzeResponse struct {
-	Status     string        `json:"status"`
-	DurationMs int64         `json:"duration_ms"`
+	Status     string         `json:"status"`
+	DurationMs int64          `json:"duration_ms"`
 	Errors     []CompileError `json:"errors"`
 	Warnings   []CompileError `json:"warnings"`
 	Infos      []CompileError `json:"infos"`
@@ -99,4 +99,24 @@ type SnapshotResponse struct {
 	WidgetTree any    `json:"widget_tree,omitempty"`
 	RenderTree string `json:"render_tree,omitempty"`
 	Summary    any    `json:"summary,omitempty"`
+}
+
+// SemanticsResponse is the data payload for the semantics command.
+type SemanticsResponse struct {
+	Status    string `json:"status"`
+	Source    string `json:"source,omitempty"`
+	Tree      any    `json:"tree,omitempty"`
+	Summary   any    `json:"summary,omitempty"`
+	Route     any    `json:"route,omitempty"`
+	Extension string `json:"extension,omitempty"`
+}
+
+// InteractionResponse is the data payload for interaction commands.
+type InteractionResponse struct {
+	Status    string `json:"status"`
+	Action    string `json:"action"`
+	Message   string `json:"message,omitempty"`
+	Matched   any    `json:"matched,omitempty"`
+	Result    any    `json:"result,omitempty"`
+	Extension string `json:"extension,omitempty"`
 }

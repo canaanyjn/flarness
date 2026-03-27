@@ -15,15 +15,22 @@ func TestHandlerRouting(t *testing.T) {
 	h := NewHandler(d)
 
 	tests := []struct {
-		cmd      string
-		wantOK   bool
+		cmd    string
+		wantOK bool
 	}{
 		{"status", true},
 		{"stop", true},
-		{"reload", false},   // No procMgr → error.
-		{"restart", false},  // No procMgr → error.
+		{"reload", false},  // No procMgr → error.
+		{"restart", false}, // No procMgr → error.
 		{"logs", true},
-		{"analyze", false},  // Fake project path → error.
+		{"analyze", false}, // Fake project path → error.
+		{"semantics", false},
+		{"tap", false},
+		{"type", false},
+		{"wait", false},
+		{"scroll", false},
+		{"swipe", false},
+		{"longpress", false},
 		{"unknown", false},
 		{"", false},
 	}

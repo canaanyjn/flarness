@@ -1,15 +1,18 @@
 package daemon
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/canaanyjn/flarness/internal/analyzer"
 	"github.com/canaanyjn/flarness/internal/collector"
-	"github.com/canaanyjn/flarness/internal/inspector"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/canaanyjn/flarness/internal/snapshot"
 )
@@ -45,6 +48,20 @@ func (h *Handler) Handle(cmd model.Command) model.Response {
 		return h.handleInspect(cmd.Args)
 	case "snapshot":
 		return h.handleSnapshot(cmd.Args)
+	case "semantics":
+		return h.handleSemantics(cmd.Args)
+	case "tap":
+		return h.handleTap(cmd.Args)
+	case "type":
+		return h.handleType(cmd.Args)
+	case "scroll":
+		return h.handleScroll(cmd.Args)
+	case "swipe":
+		return h.handleSwipe(cmd.Args)
+	case "longpress":
+		return h.handleLongPress(cmd.Args)
+	case "wait":
+		return h.handleWait(cmd.Args)
 	default:
 		return model.Response{
 			OK:    false,
@@ -330,16 +347,6 @@ func (h *Handler) handleInspect(args map[string]any) model.Response {
 		}
 	}
 
-	ins := inspector.NewInspector(debugURL)
-	result, err := ins.Inspect()
-	if err != nil {
-		return model.Response{
-			OK:    false,
-			Error: fmt.Sprintf("inspect failed: %v", err),
-		}
-	}
-
-	// Apply max_depth pruning if requested.
 	maxDepth := 0
 	if v, ok := args["max_depth"]; ok {
 		if n, ok := v.(float64); ok {
@@ -347,23 +354,14 @@ func (h *Handler) handleInspect(args map[string]any) model.Response {
 		}
 	}
 
-	var widgetTree any
-	if result.Tree != nil {
-		if maxDepth > 0 {
-			widgetTree = inspector.PruneTree(result.Tree, maxDepth)
-		} else {
-			widgetTree = result.Tree
-		}
+	respData, err := h.runInspectSubprocess(debugURL, maxDepth)
+	if err != nil {
+		return model.Response{OK: false, Error: fmt.Sprintf("inspect failed: %v", err)}
 	}
 
 	return model.Response{
-		OK: true,
-		Data: model.InspectResponse{
-			Status:     "ok",
-			WidgetTree: widgetTree,
-			RenderTree: result.RenderTree,
-			Summary:    result.Summary,
-		},
+		OK:   true,
+		Data: respData,
 	}
 }
 
@@ -386,8 +384,8 @@ func (h *Handler) handleSnapshot(args map[string]any) model.Response {
 		err    error
 	}
 	type inspectResult struct {
-		result *inspector.InspectResult
-		err    error
+		data map[string]any
+		err  error
 	}
 
 	var wg sync.WaitGroup
@@ -412,9 +410,18 @@ func (h *Handler) handleSnapshot(args map[string]any) model.Response {
 
 	go func() {
 		defer wg.Done()
-		ins := inspector.NewInspector(debugURL)
-		r, err := ins.Inspect()
-		insResult = inspectResult{result: r, err: err}
+		maxDepth := 0
+		if v, ok := args["max_depth"]; ok {
+			if n, ok := v.(float64); ok {
+				maxDepth = int(n)
+			}
+		}
+		data, err := h.runInspectSubprocess(debugURL, maxDepth)
+		if err != nil {
+			insResult = inspectResult{err: err}
+			return
+		}
+		insResult = inspectResult{data: data}
 	}()
 
 	wg.Wait()
@@ -443,24 +450,10 @@ func (h *Handler) handleSnapshot(args map[string]any) model.Response {
 			resp.Status = "partial"
 		}
 		fmt.Fprintf(os.Stderr, "[flarness] inspect failed: %v\n", insResult.err)
-	} else if insResult.result != nil {
-		// Apply max_depth pruning if requested.
-		maxDepth := 0
-		if v, ok := args["max_depth"]; ok {
-			if n, ok := v.(float64); ok {
-				maxDepth = int(n)
-			}
-		}
-
-		if insResult.result.Tree != nil {
-			if maxDepth > 0 {
-				resp.WidgetTree = inspector.PruneTree(insResult.result.Tree, maxDepth)
-			} else {
-				resp.WidgetTree = insResult.result.Tree
-			}
-		}
-		resp.RenderTree = insResult.result.RenderTree
-		resp.Summary = insResult.result.Summary
+	} else if insResult.data != nil {
+		resp.WidgetTree = insResult.data["widget_tree"]
+		resp.RenderTree = stringValue(insResult.data["render_tree"], "")
+		resp.Summary = insResult.data["summary"]
 	}
 
 	// Both failed.
@@ -477,8 +470,137 @@ func (h *Handler) handleSnapshot(args map[string]any) model.Response {
 	}
 }
 
+func (h *Handler) handleSemantics(args map[string]any) model.Response {
+	payload, err := h.runInteraction("semantics", args)
+	if err != nil {
+		return model.Response{OK: false, Error: err.Error()}
+	}
+	return model.Response{OK: true, Data: payload}
+}
+
+func (h *Handler) handleTap(args map[string]any) model.Response {
+	payload, err := h.runInteraction("tap", args)
+	if err != nil {
+		return model.Response{OK: false, Error: err.Error()}
+	}
+	return model.Response{OK: true, Data: payload}
+}
+
+func (h *Handler) handleType(args map[string]any) model.Response {
+	payload, err := h.runInteraction("type", args)
+	if err != nil {
+		return model.Response{OK: false, Error: err.Error()}
+	}
+	return model.Response{OK: true, Data: payload}
+}
+
+func (h *Handler) handleScroll(args map[string]any) model.Response {
+	payload, err := h.runInteraction("scroll", args)
+	if err != nil {
+		return model.Response{OK: false, Error: err.Error()}
+	}
+	return model.Response{OK: true, Data: payload}
+}
+
+func (h *Handler) handleSwipe(args map[string]any) model.Response {
+	payload, err := h.runInteraction("swipe", args)
+	if err != nil {
+		return model.Response{OK: false, Error: err.Error()}
+	}
+	return model.Response{OK: true, Data: payload}
+}
+
+func (h *Handler) handleLongPress(args map[string]any) model.Response {
+	payload, err := h.runInteraction("longpress", args)
+	if err != nil {
+		return model.Response{OK: false, Error: err.Error()}
+	}
+	return model.Response{OK: true, Data: payload}
+}
+
+func (h *Handler) handleWait(args map[string]any) model.Response {
+	payload, err := h.runInteraction("wait", args)
+	if err != nil {
+		return model.Response{OK: false, Error: err.Error()}
+	}
+	return model.Response{OK: true, Data: payload}
+}
+
 // screenshotDir returns the directory for storing screenshots.
 func (h *Handler) screenshotDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".flarness", "screenshots")
+}
+
+func (h *Handler) runInteraction(action string, args map[string]any) (map[string]any, error) {
+	debugURL := ""
+	if h.daemon.procMgr != nil {
+		debugURL = h.daemon.procMgr.DebugURL
+	}
+	if debugURL == "" {
+		return nil, fmt.Errorf("flutter app not running or no debug URL available")
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("resolve executable: %w", err)
+	}
+
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		return nil, fmt.Errorf("encode args: %w", err)
+	}
+
+	cmd := exec.Command(exe, "_interact", "--debug-url", debugURL, "--action", action, "--args", string(argsJSON))
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return nil, fmt.Errorf("%s", strings.TrimSpace(stderr.String()))
+		}
+		return nil, err
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		return nil, fmt.Errorf("decode interaction response: %w", err)
+	}
+	return payload, nil
+}
+
+func (h *Handler) runInspectSubprocess(debugURL string, maxDepth int) (map[string]any, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("resolve executable: %w", err)
+	}
+
+	cmd := exec.Command(exe, "_inspect", "--debug-url", debugURL, "--max-depth", fmt.Sprintf("%d", maxDepth))
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return nil, fmt.Errorf("%s", strings.TrimSpace(stderr.String()))
+		}
+		return nil, err
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		return nil, fmt.Errorf("decode inspect response: %w", err)
+	}
+	return payload, nil
+}
+
+func stringValue(v any, fallback string) string {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return fallback
+	}
+	return s
 }

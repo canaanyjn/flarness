@@ -14,7 +14,9 @@ import (
 	"github.com/canaanyjn/flarness/internal/cdp"
 	"github.com/canaanyjn/flarness/internal/collector"
 	"github.com/canaanyjn/flarness/internal/model"
+	"github.com/canaanyjn/flarness/internal/nativebridge"
 	"github.com/canaanyjn/flarness/internal/parser"
+	"github.com/canaanyjn/flarness/internal/platform"
 	"github.com/canaanyjn/flarness/internal/process"
 )
 
@@ -38,6 +40,9 @@ type Daemon struct {
 
 	// P3: CDP bridge for Web platform.
 	cdpBridge *cdp.Bridge
+
+	// Native log bridge for Android.
+	logcatBridge *nativebridge.LogcatBridge
 
 	// Reload tracking.
 	reloadCount int
@@ -161,6 +166,13 @@ func (d *Daemon) runForeground(project, device string, extraArgs []string) error
 		fmt.Fprintf(os.Stderr, "[flarness] warning: flutter process failed to start: %v\n", err)
 		// Continue without flutter — daemon still serves IPC for status/stop.
 	}
+	if platform.IsAndroid(device) && d.collector != nil {
+		d.logcatBridge = nativebridge.NewLogcatBridge(device, d.OnLog)
+		if err := d.logcatBridge.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "[flarness] warning: logcat bridge failed to start: %v\n", err)
+			d.logcatBridge = nil
+		}
+	}
 
 	// Create and start the IPC server.
 	d.server = NewServer(d.socketPath, d)
@@ -219,9 +231,11 @@ func (d *Daemon) OnStateChange(event string, data map[string]string) {
 		if d.procMgr != nil {
 			d.procMgr.SetState(process.StateStopped)
 		}
-		// Close CDP bridge.
 		if d.cdpBridge != nil {
 			d.cdpBridge.Close()
+		}
+		if d.logcatBridge != nil {
+			d.logcatBridge.Stop()
 		}
 		fmt.Fprintln(os.Stderr, "[flarness] Flutter app stopped")
 	}
@@ -325,6 +339,12 @@ func (d *Daemon) Stop() error {
 
 // Cleanup removes PID file and socket.
 func (d *Daemon) Cleanup() {
+	if d.cdpBridge != nil {
+		d.cdpBridge.Close()
+	}
+	if d.logcatBridge != nil {
+		d.logcatBridge.Stop()
+	}
 	os.Remove(d.pidPath)
 	os.Remove(d.socketPath)
 }

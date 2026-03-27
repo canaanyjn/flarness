@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 
 	"github.com/canaanyjn/flarness/internal/daemon"
+	"github.com/canaanyjn/flarness/internal/platform"
 	"github.com/spf13/cobra"
 )
 
 var (
-	startProject  string
-	startDevice   string
+	startProject   string
+	startDevice    string
 	startExtraArgs []string
 )
 
@@ -38,7 +39,7 @@ var startCmd = &cobra.Command{
 
 		device := startDevice
 		if device == "" {
-			device = "chrome"
+			device = platform.PickDefaultDevice()
 		}
 
 		d := daemon.New()
@@ -47,8 +48,8 @@ var startCmd = &cobra.Command{
 		}
 
 		printJSON(map[string]any{
-			"status": "ok",
-			"device": device,
+			"status":  "ok",
+			"device":  device,
 			"project": project,
 			"message": "daemon started",
 		})
