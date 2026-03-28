@@ -6,7 +6,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -14,11 +17,11 @@ import (
 type State int
 
 const (
-	StateIdle     State = iota // Not started.
-	StateStarting             // flutter run launched, waiting for app.started.
-	StateRunning              // App is running.
-	StateReloading            // Hot reload in progress.
-	StateStopped              // Process exited.
+	StateIdle      State = iota // Not started.
+	StateStarting               // flutter run launched, waiting for app.started.
+	StateRunning                // App is running.
+	StateReloading              // Hot reload in progress.
+	StateStopped                // Process exited.
 )
 
 func (s State) String() string {
@@ -45,10 +48,10 @@ type EventCallback func(source string, line string)
 type Manager struct {
 	mu sync.Mutex
 
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  io.ReadCloser
-	stderr  io.ReadCloser
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	stderr io.ReadCloser
 
 	state   State
 	project string
@@ -98,15 +101,7 @@ func (m *Manager) Start(extraArgs []string) error {
 		return fmt.Errorf("flutter process already in state: %s", m.state)
 	}
 
-	args := []string{"run", "--machine"}
-	if m.device != "" {
-		args = append(args, "-d", m.device)
-	}
-	args = append(args, extraArgs...)
-
-	m.cmd = exec.Command("flutter", args...)
-	m.cmd.Dir = m.project
-	m.cmd.Env = append(os.Environ(), "FLUTTER_SUPPRESS_ANALYTICS=true")
+	m.cmd = buildFlutterCommand(m.project, m.device, extraArgs)
 
 	var err error
 
@@ -146,6 +141,22 @@ func (m *Manager) Start(extraArgs []string) error {
 	}()
 
 	return nil
+}
+
+func buildFlutterCommand(project, device string, extraArgs []string) *exec.Cmd {
+	args := []string{"run", "--machine"}
+	if device != "" {
+		args = append(args, "-d", device)
+	}
+	args = append(args, extraArgs...)
+
+	cmd := exec.Command("flutter", args...)
+	cmd.Dir = project
+	cmd.Env = append(os.Environ(), "FLUTTER_SUPPRESS_ANALYTICS=true")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+	return cmd
 }
 
 // readLines reads lines from a reader and forwards to the event callback.
@@ -265,6 +276,8 @@ func (m *Manager) Stop() error {
 		return nil
 	}
 
+	relatedPIDs := m.relatedProcessPIDs()
+
 	if m.stdin != nil {
 		m.stdin.Write([]byte("q"))
 		m.stdin.Close()
@@ -276,13 +289,75 @@ func (m *Manager) Stop() error {
 		// Process exited.
 	case <-time.After(10 * time.Second):
 		// Force kill.
-		if m.cmd.Process != nil {
-			m.cmd.Process.Kill()
-		}
+		m.killProcessGroup(syscall.SIGKILL)
 	}
+
+	// Sweep any remaining descendants started by flutter run.
+	m.killProcessGroup(syscall.SIGKILL)
+	m.killTrackedProcesses(relatedPIDs, syscall.SIGKILL)
 
 	m.state = StateStopped
 	return nil
+}
+
+func (m *Manager) killProcessGroup(sig syscall.Signal) {
+	if m.cmd == nil || m.cmd.Process == nil {
+		return
+	}
+	_ = syscall.Kill(-m.cmd.Process.Pid, sig)
+}
+
+func (m *Manager) killTrackedProcesses(pids []int, sig syscall.Signal) {
+	for _, pid := range pids {
+		if m.cmd != nil && m.cmd.Process != nil && pid == m.cmd.Process.Pid {
+			continue
+		}
+		_ = syscall.Kill(pid, sig)
+	}
+}
+
+func (m *Manager) relatedProcessPIDs() []int {
+	if m.cmd == nil || m.cmd.Process == nil {
+		return nil
+	}
+	return descendantPIDs(m.cmd.Process.Pid)
+}
+
+func descendantPIDs(rootPID int) []int {
+	out, err := exec.Command("ps", "-axo", "pid=,ppid=").Output()
+	if err != nil {
+		return nil
+	}
+
+	children := map[int][]int{}
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		pid, err1 := strconv.Atoi(fields[0])
+		ppid, err2 := strconv.Atoi(fields[1])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		children[ppid] = append(children[ppid], pid)
+	}
+
+	return collectDescendantPIDs(children, rootPID)
+}
+
+func collectDescendantPIDs(children map[int][]int, rootPID int) []int {
+	var result []int
+	var walk func(int)
+	walk = func(pid int) {
+		for _, child := range children[pid] {
+			result = append(result, child)
+			walk(child)
+		}
+	}
+	walk(rootPID)
+	return result
 }
 
 // Done returns a channel that's closed when the process exits.

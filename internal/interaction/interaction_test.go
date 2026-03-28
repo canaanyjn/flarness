@@ -40,9 +40,9 @@ func TestMatchesFinder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := matchesFinder(node, tt.finder)
+			got := finderScore(node, tt.finder) > 0
 			if got != tt.want {
-				t.Errorf("matchesFinder() = %v, want %v", got, tt.want)
+				t.Errorf("finderScore()>0 = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -137,6 +137,15 @@ func TestSemanticsActionIndex(t *testing.T) {
 	}
 }
 
+func TestIsTransientInteractionError(t *testing.T) {
+	if !isTransientInteractionError(errString("read failed: i/o timeout")) {
+		t.Fatal("expected timeout error to be transient")
+	}
+	if isTransientInteractionError(errString("service extension returned error")) {
+		t.Fatal("expected regular extension error to be non-transient")
+	}
+}
+
 func TestEscapeString(t *testing.T) {
 	tests := []struct {
 		input string
@@ -220,4 +229,10 @@ func TestParseSemanticsTreeDump(t *testing.T) {
 	if len(child2.Actions) != 2 {
 		t.Errorf("child2 actions = %v, want [tap, longPress]", child2.Actions)
 	}
+}
+
+type errString string
+
+func (e errString) Error() string {
+	return string(e)
 }

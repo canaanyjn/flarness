@@ -3,8 +3,10 @@ package inspector
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -17,6 +19,10 @@ type Inspector struct {
 	debugURL string // ws:// URL for the VM Service
 }
 
+const inspectAttempts = 3
+
+var inspectorRPCID int64
+
 // WidgetNode represents a node in the Widget tree.
 type WidgetNode struct {
 	Widget      string            `json:"widget"`
@@ -27,9 +33,9 @@ type WidgetNode struct {
 
 // InspectResult holds the result of a widget tree inspection.
 type InspectResult struct {
-	Tree         *WidgetNode       `json:"tree,omitempty"`
-	RenderTree   string            `json:"render_tree,omitempty"`
-	Summary      *TreeSummary      `json:"summary"`
+	Tree       *WidgetNode  `json:"tree,omitempty"`
+	RenderTree string       `json:"render_tree,omitempty"`
+	Summary    *TreeSummary `json:"summary"`
 }
 
 // TreeSummary provides a quick overview of the widget tree.
@@ -55,6 +61,23 @@ func (ins *Inspector) Inspect() (*InspectResult, error) {
 		return nil, fmt.Errorf("no debug URL available — is the app running?")
 	}
 
+	var lastErr error
+	for attempt := 1; attempt <= inspectAttempts; attempt++ {
+		result, err := ins.inspectOnce()
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !isTransientVMServiceError(err) || attempt == inspectAttempts {
+			break
+		}
+		time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+	}
+
+	return nil, lastErr
+}
+
+func (ins *Inspector) inspectOnce() (*InspectResult, error) {
 	conn, err := ins.connect()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to VM Service: %w", err)
@@ -99,6 +122,9 @@ func (ins *Inspector) Inspect() (*InspectResult, error) {
 func (ins *Inspector) connect() (*websocket.Conn, error) {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
+		NetDial: func(network, addr string) (net.Conn, error) {
+			return net.DialTimeout(network, addr, 15*time.Second)
+		},
 	}
 
 	conn, _, err := dialer.Dial(ins.debugURL, nil)
@@ -111,7 +137,7 @@ func (ins *Inspector) connect() (*websocket.Conn, error) {
 
 // sendRPC sends a JSON-RPC request and returns the response.
 func (ins *Inspector) sendRPC(conn *websocket.Conn, method string, params map[string]any) (json.RawMessage, error) {
-	id := time.Now().UnixNano()
+	id := nextInspectorRPCID()
 
 	req := map[string]any{
 		"jsonrpc": "2.0",
@@ -170,6 +196,23 @@ func (ins *Inspector) sendRPC(conn *websocket.Conn, method string, params map[st
 	}
 }
 
+func nextInspectorRPCID() int64 {
+	return atomic.AddInt64(&inspectorRPCID, 1)
+}
+
+func isTransientVMServiceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "i/o timeout") ||
+		strings.Contains(message, "timeout") ||
+		strings.Contains(message, "eof") ||
+		strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "broken pipe") ||
+		strings.Contains(message, "use of closed network connection")
+}
+
 // getMainIsolateID gets the ID of the main isolate from the VM.
 func (ins *Inspector) getMainIsolateID(conn *websocket.Conn) (string, error) {
 	result, err := ins.sendRPC(conn, "getVM", map[string]any{})
@@ -225,17 +268,22 @@ func (ins *Inspector) getWidgetTree(conn *websocket.Conn, isolateID string) (*Wi
 
 // parseWidgetTree converts the raw JSON widget tree into our WidgetNode structure.
 func (ins *Inspector) parseWidgetTree(raw json.RawMessage) (*WidgetNode, error) {
+	raw = unwrapExtensionEnvelope(raw)
+
 	var rawNode struct {
-		Description    string            `json:"description"`
-		Type           string            `json:"type"`
-		Properties     []json.RawMessage `json:"properties"`
-		Children       []json.RawMessage `json:"children"`
-		WidgetRuntimeType string         `json:"widgetRuntimeType"`
-		HasChildren    bool              `json:"hasChildren"`
+		Description       string            `json:"description"`
+		Type              string            `json:"type"`
+		Properties        []json.RawMessage `json:"properties"`
+		Children          []json.RawMessage `json:"children"`
+		WidgetRuntimeType string            `json:"widgetRuntimeType"`
+		HasChildren       bool              `json:"hasChildren"`
 	}
 
 	if err := json.Unmarshal(raw, &rawNode); err != nil {
 		return nil, fmt.Errorf("failed to parse widget node: %w", err)
+	}
+	if rawNode.Description == "" && rawNode.Type == "" && rawNode.WidgetRuntimeType == "" && len(rawNode.Children) == 0 {
+		return nil, fmt.Errorf("empty widget tree payload")
 	}
 
 	node := &WidgetNode{
@@ -291,14 +339,49 @@ func (ins *Inspector) getRenderTreeDescription(conn *websocket.Conn, isolateID s
 		return "", err
 	}
 
+	result = unwrapExtensionEnvelope(result)
+
 	var resp struct {
 		Description string `json:"description"`
 	}
 	if err := json.Unmarshal(result, &resp); err != nil {
+		var text string
+		if err := json.Unmarshal(result, &text); err == nil {
+			return text, nil
+		}
 		return string(result), nil
+	}
+	if resp.Description == "" {
+		var text string
+		if err := json.Unmarshal(result, &text); err == nil {
+			return text, nil
+		}
 	}
 
 	return resp.Description, nil
+}
+
+func unwrapExtensionEnvelope(raw json.RawMessage) json.RawMessage {
+	var envelope struct {
+		Result json.RawMessage `json:"result"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return raw
+	}
+
+	for _, candidate := range []json.RawMessage{envelope.Result, envelope.Data} {
+		if len(candidate) == 0 || string(candidate) == "null" {
+			continue
+		}
+		var text string
+		if err := json.Unmarshal(candidate, &text); err == nil {
+			return json.RawMessage(text)
+		}
+		return candidate
+	}
+
+	return raw
 }
 
 // buildSummary creates a TreeSummary from a WidgetNode tree.

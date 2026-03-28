@@ -12,14 +12,18 @@ var (
 
 var inspectCmd = &cobra.Command{
 	Use:   "inspect",
-	Short: "Inspect the Widget tree of the running Flutter app",
-	Long: `Inspect the Widget tree of the running Flutter app via VM Service Protocol.
+	Short: "Inspect Flutter UI structure for development debugging",
+	Long: `Inspect Flutter UI structure via VM Service Protocol.
 
 Returns a structured JSON representation of the current Widget hierarchy,
-including widget types, properties, and children.
+including widget types, properties, and children. If widget inspection is not
+available on the current target, Flarness falls back to a render tree description.
 
-This is useful for AI to understand what's currently rendered on screen
-without needing visual interpretation.`,
+Use inspect when you need structural debugging information about how the UI is
+composed.
+
+Use semantics instead when you need automation-facing data such as labels,
+actions, focus, and bounding rectangles.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client := ipc.NewClient()
 		if !client.IsRunning() {

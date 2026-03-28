@@ -14,13 +14,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const screenshotSkiaType = "skia"
+
 // Screenshotter captures screenshots from the running Flutter app.
 type Screenshotter struct {
-	mu         sync.Mutex
-	project    string
-	device     string
-	debugURL   string // VM Service ws:// URL
-	outputDir  string
+	mu        sync.Mutex
+	project   string
+	device    string
+	debugURL  string // VM Service ws:// URL
+	outputDir string
 }
 
 // ScreenshotResult holds the result of a screenshot capture.
@@ -35,9 +37,9 @@ type ScreenshotResult struct {
 // NewScreenshotter creates a new Screenshotter.
 func NewScreenshotter(project, device, debugURL, outputDir string) *Screenshotter {
 	return &Screenshotter{
-		project:  project,
-		device:   device,
-		debugURL: debugURL,
+		project:   project,
+		device:    device,
+		debugURL:  debugURL,
 		outputDir: outputDir,
 	}
 }
@@ -150,15 +152,9 @@ func (s *Screenshotter) captureCDP(outPath string) (*ScreenshotResult, error) {
 func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error) {
 	args := []string{"screenshot", "--out", outPath}
 
-	// If we have a debug URL, use the VM service observatory.
+	// If we have a debug URL, prefer a VM-service-backed Skia capture.
 	if s.debugURL != "" {
-		// Convert ws:// to http:// for observatory URL.
-		obsURL := s.debugURL
-		obsURL = strings.Replace(obsURL, "ws://", "http://", 1)
-		obsURL = strings.Replace(obsURL, "wss://", "https://", 1)
-		// Remove /ws suffix if present.
-		obsURL = strings.TrimSuffix(obsURL, "/ws")
-		args = append(args, "--observatory-url", obsURL)
+		args = append(args, "--type", screenshotSkiaType, "--vm-service-url", s.vmServiceURL())
 	}
 
 	cmd := exec.Command("flutter", args...)
@@ -166,6 +162,28 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if s.debugURL != "" {
+			fallbackArgs := []string{"screenshot", "--out", outPath}
+			fallbackCmd := exec.Command("flutter", fallbackArgs...)
+			fallbackCmd.Dir = s.project
+			fallbackOutput, fallbackErr := fallbackCmd.CombinedOutput()
+			if fallbackErr == nil {
+				info, statErr := os.Stat(outPath)
+				if statErr == nil {
+					return &ScreenshotResult{
+						Path:   outPath,
+						Size:   formatSize(info.Size()),
+						Device: s.device,
+					}, nil
+				}
+			}
+			return nil, fmt.Errorf(
+				"flutter screenshot failed with vm-service capture: %w\nOutput: %s\nFallback output: %s",
+				err,
+				string(output),
+				string(fallbackOutput),
+			)
+		}
 		return nil, fmt.Errorf("flutter screenshot failed: %w\nOutput: %s", err, string(output))
 	}
 
@@ -180,6 +198,13 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 		Size:   formatSize(info.Size()),
 		Device: s.device,
 	}, nil
+}
+
+func (s *Screenshotter) vmServiceURL() string {
+	url := s.debugURL
+	url = strings.Replace(url, "ws://", "http://", 1)
+	url = strings.Replace(url, "wss://", "https://", 1)
+	return strings.TrimSuffix(url, "/ws")
 }
 
 // resolveCDPURL tries to get the CDP page endpoint from the debug URL.

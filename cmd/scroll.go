@@ -12,9 +12,9 @@ var scrollCmd = &cobra.Command{
 	Long: `Scroll a Flutter scrollable widget (ListView, ScrollView, etc.).
 
 Examples:
-  flarness scroll --text "Todo List" --dy -300
-  flarness scroll --text "Todo List" --dy 300
-  flarness scroll --type "hasScrollAction" --dx -200`,
+  flarness interact scroll --text "Todo List" --dy -300
+  flarness interact scroll --text "Todo List" --dy 300
+  flarness interact scroll --type "hasScrollAction" --dx -200`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
@@ -68,5 +68,5 @@ func init() {
 	scrollCmd.Flags().Float64("dx", 0, "horizontal scroll offset (negative=left)")
 	scrollCmd.Flags().Float64("dy", 0, "vertical scroll offset (negative=up)")
 	scrollCmd.Flags().Int("index", 0, "0-based index when multiple matches")
-	rootCmd.AddCommand(scrollCmd)
+	interactCmd.AddCommand(scrollCmd)
 }

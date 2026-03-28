@@ -318,23 +318,40 @@ func (d *Daemon) Stop() error {
 		return nil
 	}
 
-	// Wait for the process to exit (with timeout).
-	done := make(chan error, 1)
-	go func() {
-		_, err := proc.Wait()
-		done <- err
-	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !processExists(proc) {
+			d.Cleanup()
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
-	select {
-	case <-done:
-		// Process exited.
-	case <-time.After(5 * time.Second):
-		// Force kill.
-		proc.Kill()
+	// Force kill if graceful shutdown did not complete.
+	if err := proc.Kill(); err == nil {
+		killDeadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(killDeadline) {
+			if !processExists(proc) {
+				d.Cleanup()
+				return nil
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	if processExists(proc) {
+		return fmt.Errorf("daemon process did not exit after SIGTERM/SIGKILL")
 	}
 
 	d.Cleanup()
 	return nil
+}
+
+func processExists(proc *os.Process) bool {
+	if proc == nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 // Cleanup removes PID file and socket.

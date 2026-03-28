@@ -8,9 +8,18 @@ import (
 
 var semanticsCmd = &cobra.Command{
 	Use:   "semantics",
-	Short: "Dump the semantics tree (for debugging UI automation)",
+	Short: "Dump the semantics tree for automation and element targeting",
 	Long: `Dump the Flutter semantics tree in structured format.
-Useful for understanding what elements are available for tap/input/scroll.
+Useful for understanding what elements are available for tap, type, wait,
+scroll, swipe, and long press.
+
+Semantics is the automation-facing view of the UI: it exposes labels, values,
+available actions, flags, and element bounds.
+
+Use semantics when you want to locate or interact with UI elements.
+
+Use inspect instead when you want structural debugging information about the
+widget tree or render tree.
 
 Examples:
   flarness semantics`,

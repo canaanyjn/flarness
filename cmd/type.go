@@ -12,14 +12,14 @@ var typeCmd = &cobra.Command{
 	Long: `Type text into whichever Flutter text field currently has focus.
 No element finder is needed — this command writes to the active input.
 
-Use 'flarness tap' first to focus the desired text field, then 'flarness type'.
+Use 'flarness interact tap' first to focus the desired text field, then 'flarness interact type'.
 
 Examples:
-  flarness tap --text "Search"
-  flarness type --value "buy milk"
+  flarness interact tap --text "Search"
+  flarness interact type --value "buy milk"
 
-  flarness type --value " and eggs" --append
-  flarness type --clear`,
+  flarness interact type --value " and eggs" --append
+  flarness interact type --clear`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		value, _ := cmd.Flags().GetString("value")
 		clear, _ := cmd.Flags().GetBool("clear")
@@ -68,5 +68,5 @@ func init() {
 	typeCmd.Flags().String("value", "", "text to type into the focused field")
 	typeCmd.Flags().Bool("clear", false, "clear the focused field")
 	typeCmd.Flags().Bool("append", false, "append text instead of replacing")
-	rootCmd.AddCommand(typeCmd)
+	interactCmd.AddCommand(typeCmd)
 }

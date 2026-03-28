@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -141,6 +143,27 @@ func TestStatus(t *testing.T) {
 	}
 	if status["running"] != true {
 		t.Errorf("running: got %v, want true", status["running"])
+	}
+}
+
+func TestProcessExists(t *testing.T) {
+	cmd := exec.Command("sleep", "2")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start helper process: %v", err)
+	}
+	defer cmd.Process.Kill()
+
+	if !processExists(cmd.Process) {
+		t.Fatal("expected helper process to exist")
+	}
+
+	if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+		t.Fatalf("failed to kill helper process: %v", err)
+	}
+	_, _ = cmd.Process.Wait()
+
+	if processExists(cmd.Process) {
+		t.Fatal("expected helper process to be gone")
 	}
 }
 

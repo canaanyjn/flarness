@@ -92,15 +92,6 @@ type InspectResponse struct {
 	Summary    any    `json:"summary,omitempty"`
 }
 
-// SnapshotResponse is the data payload for the snapshot command (screenshot + inspect).
-type SnapshotResponse struct {
-	Status     string `json:"status"`
-	Screenshot any    `json:"screenshot,omitempty"`
-	WidgetTree any    `json:"widget_tree,omitempty"`
-	RenderTree string `json:"render_tree,omitempty"`
-	Summary    any    `json:"summary,omitempty"`
-}
-
 // SemanticsResponse is the data payload for the semantics command.
 type SemanticsResponse struct {
 	Status    string `json:"status"`

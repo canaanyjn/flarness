@@ -1,7 +1,7 @@
 APP_NAME := flarness
 VERSION  := $(shell git describe --tags --always 2>/dev/null || echo "dev")
 
-.PHONY: build build-all install clean test
+.PHONY: build build-all release-build release-publish install clean test
 
 # Build for current platform
 build:
@@ -13,6 +13,12 @@ build-all:
 	GOOS=darwin  GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o bin/$(APP_NAME)-darwin-arm64 .
 	GOOS=linux   GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o bin/$(APP_NAME)-linux-amd64 .
 	GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o bin/$(APP_NAME)-windows-amd64.exe .
+
+release-build:
+	RELEASE_VERSION=$(VERSION) ./release/build.sh
+
+release-publish:
+	RELEASE_VERSION=$(VERSION) ./release/publish-gh.sh
 
 # Install to /usr/local/bin
 install: build

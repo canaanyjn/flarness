@@ -13,8 +13,8 @@ var waitCmd = &cobra.Command{
 Returns when the element is found, or errors on timeout.
 
 Examples:
-  flarness wait --text "Success"
-  flarness wait --text "Loading..." --timeout 30`,
+  flarness interact wait --text "Success"
+  flarness interact wait --text "Loading..." --timeout 30`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
@@ -65,5 +65,5 @@ func init() {
 	waitCmd.Flags().String("type", "", "find by widget type/flag")
 	waitCmd.Flags().Int("timeout", 10, "timeout in seconds")
 	waitCmd.Flags().Int("index", 0, "0-based index when multiple matches")
-	rootCmd.AddCommand(waitCmd)
+	interactCmd.AddCommand(waitCmd)
 }

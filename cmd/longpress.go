@@ -12,8 +12,8 @@ var longpressCmd = &cobra.Command{
 	Long: `Long press on a Flutter widget found by text or type.
 
 Examples:
-  flarness longpress --text "Todo Item"
-  flarness longpress --text "Delete" --duration 1000`,
+  flarness interact longpress --text "Todo Item"
+  flarness interact longpress --text "Delete" --duration 1000`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
@@ -64,5 +64,5 @@ func init() {
 	longpressCmd.Flags().String("type", "", "find by widget type/flag")
 	longpressCmd.Flags().Int("duration", 500, "long press duration in milliseconds")
 	longpressCmd.Flags().Int("index", 0, "0-based index when multiple matches")
-	rootCmd.AddCommand(longpressCmd)
+	interactCmd.AddCommand(longpressCmd)
 }

@@ -12,9 +12,9 @@ var tapCmd = &cobra.Command{
 	Long: `Tap on a Flutter widget found by text, type, or coordinates.
 
 Examples:
-  flarness tap --text "Add Todo"
-  flarness tap --type "isButton" --index 2
-  flarness tap --x 400 --y 300`,
+  flarness interact tap --text "Add Todo"
+  flarness interact tap --type "isButton" --index 2
+  flarness interact tap --x 400 --y 300`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
@@ -69,5 +69,5 @@ func init() {
 	tapCmd.Flags().Int("index", 0, "0-based index when multiple matches")
 	tapCmd.Flags().Float64("x", -1, "tap by logical x coordinate")
 	tapCmd.Flags().Float64("y", -1, "tap by logical y coordinate")
-	rootCmd.AddCommand(tapCmd)
+	interactCmd.AddCommand(tapCmd)
 }

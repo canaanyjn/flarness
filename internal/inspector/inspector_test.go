@@ -20,6 +20,29 @@ func TestInspectNoDebugURL(t *testing.T) {
 	}
 }
 
+func TestNextInspectorRPCIDUsesSafeSequentialValues(t *testing.T) {
+	inspectorRPCID = 0
+
+	first := nextInspectorRPCID()
+	second := nextInspectorRPCID()
+
+	if first != 1 {
+		t.Fatalf("first id = %d, want 1", first)
+	}
+	if second != 2 {
+		t.Fatalf("second id = %d, want 2", second)
+	}
+}
+
+func TestIsTransientVMServiceError(t *testing.T) {
+	if !isTransientVMServiceError(assertErr("read failed: i/o timeout")) {
+		t.Fatal("expected timeout error to be transient")
+	}
+	if isTransientVMServiceError(assertErr("RPC error: method not found")) {
+		t.Fatal("expected RPC error to be non-transient")
+	}
+}
+
 func TestBuildSummary(t *testing.T) {
 	tree := &WidgetNode{
 		Widget: "MaterialApp",
@@ -188,6 +211,29 @@ func TestParseWidgetTree(t *testing.T) {
 	}
 }
 
+func TestParseWidgetTreeUnwrapsExtensionEnvelope(t *testing.T) {
+	ins := NewInspector("")
+
+	raw := json.RawMessage(`{
+		"result": "{\"widgetRuntimeType\":\"MaterialApp\",\"description\":\"MaterialApp\",\"children\":[],\"properties\":[]}"
+	}`)
+
+	node, err := ins.parseWidgetTree(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.Widget != "MaterialApp" {
+		t.Fatalf("widget = %q, want MaterialApp", node.Widget)
+	}
+}
+
+func TestUnwrapExtensionEnvelope(t *testing.T) {
+	raw := json.RawMessage(`{"data":"plain text payload"}`)
+	if got := string(unwrapExtensionEnvelope(raw)); got != "plain text payload" {
+		t.Fatalf("unwrapExtensionEnvelope() = %q, want %q", got, "plain text payload")
+	}
+}
+
 func TestWidgetNodeJSON(t *testing.T) {
 	node := &WidgetNode{
 		Widget: "Text",
@@ -213,4 +259,16 @@ func TestWidgetNodeJSON(t *testing.T) {
 	if parsed.Properties["data"] != "Hello World" {
 		t.Errorf("expected property data 'Hello World', got %s", parsed.Properties["data"])
 	}
+}
+
+func assertErr(message string) error {
+	return &testError{message: message}
+}
+
+type testError struct {
+	message string
+}
+
+func (e *testError) Error() string {
+	return e.message
 }

@@ -13,9 +13,9 @@ var swipeCmd = &cobra.Command{
 Useful for Dismissible (swipe-to-delete), drawers, etc.
 
 Examples:
-  flarness swipe --text "Todo Item" --dx -400
-  flarness swipe --text "Todo Item" --dx 300
-  flarness swipe --text "Photo" --dy -200`,
+  flarness interact swipe --text "Todo Item" --dx -400
+  flarness interact swipe --text "Todo Item" --dx 300
+  flarness interact swipe --text "Photo" --dy -200`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
@@ -72,5 +72,5 @@ func init() {
 	swipeCmd.Flags().Float64("dy", 0, "vertical swipe distance")
 	swipeCmd.Flags().Int("duration", 300, "swipe duration in milliseconds")
 	swipeCmd.Flags().Int("index", 0, "0-based index when multiple matches")
-	rootCmd.AddCommand(swipeCmd)
+	interactCmd.AddCommand(swipeCmd)
 }

@@ -44,6 +44,38 @@ func TestNewManager(t *testing.T) {
 	}
 }
 
+func TestStartConfiguresNewProcessGroup(t *testing.T) {
+	m := New("/test/project", "chrome", nil)
+	args := []string{"run", "--machine", "-d", "chrome"}
+	m.cmd = nil
+
+	cmd := buildFlutterCommand(m.project, m.device, nil)
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
+		t.Fatal("expected flutter command to start in its own process group")
+	}
+	if len(cmd.Args) != len(args)+1 {
+		t.Fatalf("unexpected arg count: got %d", len(cmd.Args))
+	}
+}
+
+func TestDescendantPIDsParsesProcessTree(t *testing.T) {
+	tree := map[int][]int{
+		10: {11, 12},
+		11: {13},
+		12: {14, 15},
+	}
+	got := collectDescendantPIDs(tree, 10)
+	want := []int{11, 13, 12, 14, 15}
+	if len(got) != len(want) {
+		t.Fatalf("descendant count = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("descendants[%d] = %d, want %d", i, got[i], want[i])
+		}
+	}
+}
+
 func TestManagerStateTransitions(t *testing.T) {
 	m := New("/test", "chrome", nil)
 

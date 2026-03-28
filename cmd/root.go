@@ -19,7 +19,7 @@ var rootCmd = &cobra.Command{
 	Long: `Flarness — Flutter AI Harness
 
 An AI-friendly tool that lets AI Agents drive the complete Flutter development loop.
-Provides structured JSON responses for every operation.`,
+	Provides structured JSON responses for every operation.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }

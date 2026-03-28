@@ -12,6 +12,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const interactionAttempts = 3
+
 // Interactor performs UI interactions on a running Flutter app via VM Service.
 type Interactor struct {
 	mu       sync.Mutex
@@ -89,42 +91,38 @@ func (it *Interactor) Tap(finder Finder) (*InteractionResult, error) {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-
-	node, err := it.findNode(conn, isolateID, finder)
-	if err != nil {
-		return nil, err
-	}
-
-	if hasAction(node, "tap") {
-		if err := it.callFlarnessSemanticsAction(conn, isolateID, node.ID, "tap", ""); err != nil {
-			return nil, fmt.Errorf("semantics tap failed on %s: %w", nodeLabel(node), err)
+	return withInteractionSession(it, func(conn *websocket.Conn, isolateID string) (*InteractionResult, error) {
+		node, err := it.findNode(conn, isolateID, finder)
+		if err != nil {
+			return nil, err
 		}
+
+		if hasAction(node, "tap") {
+			if err := it.callFlarnessSemanticsAction(conn, isolateID, node.ID, "tap", ""); err != nil {
+				return nil, fmt.Errorf("semantics tap failed on %s: %w", nodeLabel(node), err)
+			}
+			return &InteractionResult{
+				Status:  "ok",
+				Action:  "tap",
+				Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
+				Target:  nodeLabel(node),
+				Details: fmt.Sprintf("semantics tap on node #%d", node.ID),
+			}, nil
+		}
+
+		cx, cy := node.Rect.Center()
+		if err := it.callFlarnessTapAt(conn, isolateID, cx, cy); err != nil {
+			return nil, fmt.Errorf("tap failed on %s at (%.0f, %.0f): %w", nodeLabel(node), cx, cy, err)
+		}
+
 		return &InteractionResult{
 			Status:  "ok",
 			Action:  "tap",
 			Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
 			Target:  nodeLabel(node),
-			Details: fmt.Sprintf("semantics tap on node #%d", node.ID),
+			Details: fmt.Sprintf("tapAt (%.0f, %.0f)", cx, cy),
 		}, nil
-	}
-
-	cx, cy := node.Rect.Center()
-	if err := it.callFlarnessTapAt(conn, isolateID, cx, cy); err != nil {
-		return nil, fmt.Errorf("tap failed on %s at (%.0f, %.0f): %w", nodeLabel(node), cx, cy, err)
-	}
-
-	return &InteractionResult{
-		Status:  "ok",
-		Action:  "tap",
-		Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
-		Target:  nodeLabel(node),
-		Details: fmt.Sprintf("tapAt (%.0f, %.0f)", cx, cy),
-	}, nil
+	})
 }
 
 // TapAt taps at a logical coordinate.
@@ -132,22 +130,18 @@ func (it *Interactor) TapAt(x, y float64) (*InteractionResult, error) {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
+	return withInteractionSession(it, func(conn *websocket.Conn, isolateID string) (*InteractionResult, error) {
+		if err := it.callFlarnessTapAt(conn, isolateID, x, y); err != nil {
+			return nil, fmt.Errorf("tapAt (%.0f, %.0f) failed: %w", x, y, err)
+		}
 
-	if err := it.callFlarnessTapAt(conn, isolateID, x, y); err != nil {
-		return nil, fmt.Errorf("tapAt (%.0f, %.0f) failed: %w", x, y, err)
-	}
-
-	return &InteractionResult{
-		Status:  "ok",
-		Action:  "tap",
-		Target:  fmt.Sprintf("(%.0f, %.0f)", x, y),
-		Details: "tapAt service extension",
-	}, nil
+		return &InteractionResult{
+			Status:  "ok",
+			Action:  "tap",
+			Target:  fmt.Sprintf("(%.0f, %.0f)", x, y),
+			Details: "tapAt service extension",
+		}, nil
+	})
 }
 
 // Type enters text into the currently focused text field.
@@ -155,32 +149,28 @@ func (it *Interactor) Type(text string, clear bool, appendMode bool) (*Interacti
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
+	return withInteractionSession(it, func(conn *websocket.Conn, isolateID string) (*InteractionResult, error) {
+		payload, err := it.callFlarnessType(conn, isolateID, text, clear, appendMode)
+		if err != nil {
+			return nil, fmt.Errorf("type failed: %w", err)
+		}
 
-	payload, err := it.callFlarnessType(conn, isolateID, text, clear, appendMode)
-	if err != nil {
-		return nil, fmt.Errorf("type failed: %w", err)
-	}
+		details := fmt.Sprintf("typed %q into focused field", text)
+		if clear && text == "" {
+			details = "cleared focused field"
+		} else if appendMode {
+			details = fmt.Sprintf("appended %q to focused field", text)
+		}
+		if payload.ObservedText != "" || payload.CurrentText != "" {
+			details = fmt.Sprintf("%s (observed=%q current=%q focused=%t)", details, payload.ObservedText, payload.CurrentText, payload.Focused)
+		}
 
-	details := fmt.Sprintf("typed %q into focused field", text)
-	if clear && text == "" {
-		details = "cleared focused field"
-	} else if appendMode {
-		details = fmt.Sprintf("appended %q to focused field", text)
-	}
-	if payload.ObservedText != "" || payload.CurrentText != "" {
-		details = fmt.Sprintf("%s (observed=%q current=%q focused=%t)", details, payload.ObservedText, payload.CurrentText, payload.Focused)
-	}
-
-	return &InteractionResult{
-		Status:  "ok",
-		Action:  "type",
-		Details: details,
-	}, nil
+		return &InteractionResult{
+			Status:  "ok",
+			Action:  "type",
+			Details: details,
+		}, nil
+	})
 }
 
 // SwipeOn swipes a widget found by the given finder in the specified direction.
@@ -188,29 +178,25 @@ func (it *Interactor) SwipeOn(finder Finder, dx, dy float64, durationMs int) (*I
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
+	return withInteractionSession(it, func(conn *websocket.Conn, isolateID string) (*InteractionResult, error) {
+		node, err := it.findNode(conn, isolateID, finder)
+		if err != nil {
+			return nil, err
+		}
 
-	node, err := it.findNode(conn, isolateID, finder)
-	if err != nil {
-		return nil, err
-	}
+		cx, cy := node.Rect.Center()
+		if err := it.callFlarnessSwipe(conn, isolateID, cx, cy, cx+dx, cy+dy, durationMs); err != nil {
+			return nil, fmt.Errorf("swipe failed on %s: %w", nodeLabel(node), err)
+		}
 
-	cx, cy := node.Rect.Center()
-	if err := it.callFlarnessSwipe(conn, isolateID, cx, cy, cx+dx, cy+dy, durationMs); err != nil {
-		return nil, fmt.Errorf("swipe failed on %s: %w", nodeLabel(node), err)
-	}
-
-	return &InteractionResult{
-		Status:  "ok",
-		Action:  "swipe",
-		Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
-		Target:  nodeLabel(node),
-		Details: fmt.Sprintf("swipe from (%.0f,%.0f) by (%.0f,%.0f)", cx, cy, dx, dy),
-	}, nil
+		return &InteractionResult{
+			Status:  "ok",
+			Action:  "swipe",
+			Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
+			Target:  nodeLabel(node),
+			Details: fmt.Sprintf("swipe from (%.0f,%.0f) by (%.0f,%.0f)", cx, cy, dx, dy),
+		}, nil
+	})
 }
 
 // Scroll scrolls a scrollable widget found by the given finder.
@@ -218,44 +204,40 @@ func (it *Interactor) Scroll(finder Finder, dx, dy float64) (*InteractionResult,
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
+	return withInteractionSession(it, func(conn *websocket.Conn, isolateID string) (*InteractionResult, error) {
+		node, err := it.findNode(conn, isolateID, finder)
+		if err != nil {
+			return nil, err
+		}
 
-	node, err := it.findNode(conn, isolateID, finder)
-	if err != nil {
-		return nil, err
-	}
+		var action string
+		if dy < 0 && hasAction(node, "scrollUp") {
+			action = "scrollUp"
+		} else if dy > 0 && hasAction(node, "scrollDown") {
+			action = "scrollDown"
+		} else if dx < 0 && hasAction(node, "scrollLeft") {
+			action = "scrollLeft"
+		} else if dx > 0 && hasAction(node, "scrollRight") {
+			action = "scrollRight"
+		}
 
-	var action string
-	if dy < 0 && hasAction(node, "scrollUp") {
-		action = "scrollUp"
-	} else if dy > 0 && hasAction(node, "scrollDown") {
-		action = "scrollDown"
-	} else if dx < 0 && hasAction(node, "scrollLeft") {
-		action = "scrollLeft"
-	} else if dx > 0 && hasAction(node, "scrollRight") {
-		action = "scrollRight"
-	}
+		if action == "" {
+			return nil, fmt.Errorf("scroll failed: no matching scroll action on %s (dx=%.0f, dy=%.0f, available actions: %v)",
+				nodeLabel(node), dx, dy, node.Actions)
+		}
 
-	if action == "" {
-		return nil, fmt.Errorf("scroll failed: no matching scroll action on %s (dx=%.0f, dy=%.0f, available actions: %v)",
-			nodeLabel(node), dx, dy, node.Actions)
-	}
+		if err := it.callFlarnessSemanticsAction(conn, isolateID, node.ID, action, ""); err != nil {
+			return nil, fmt.Errorf("scroll %s failed on %s: %w", action, nodeLabel(node), err)
+		}
 
-	if err := it.callFlarnessSemanticsAction(conn, isolateID, node.ID, action, ""); err != nil {
-		return nil, fmt.Errorf("scroll %s failed on %s: %w", action, nodeLabel(node), err)
-	}
-
-	return &InteractionResult{
-		Status:  "ok",
-		Action:  "scroll",
-		Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
-		Target:  nodeLabel(node),
-		Details: fmt.Sprintf("%s via semantics", action),
-	}, nil
+		return &InteractionResult{
+			Status:  "ok",
+			Action:  "scroll",
+			Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
+			Target:  nodeLabel(node),
+			Details: fmt.Sprintf("%s via semantics", action),
+		}, nil
+	})
 }
 
 // LongPress performs a long press on a widget found by the given finder.
@@ -263,33 +245,29 @@ func (it *Interactor) LongPress(finder Finder, durationMs int) (*InteractionResu
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
+	return withInteractionSession(it, func(conn *websocket.Conn, isolateID string) (*InteractionResult, error) {
+		node, err := it.findNode(conn, isolateID, finder)
+		if err != nil {
+			return nil, err
+		}
 
-	node, err := it.findNode(conn, isolateID, finder)
-	if err != nil {
-		return nil, err
-	}
+		if !hasAction(node, "longPress") {
+			return nil, fmt.Errorf("longPress failed: node %s does not support longPress (available actions: %v)",
+				nodeLabel(node), node.Actions)
+		}
 
-	if !hasAction(node, "longPress") {
-		return nil, fmt.Errorf("longPress failed: node %s does not support longPress (available actions: %v)",
-			nodeLabel(node), node.Actions)
-	}
+		if err := it.callFlarnessSemanticsAction(conn, isolateID, node.ID, "longPress", ""); err != nil {
+			return nil, fmt.Errorf("longPress failed on %s: %w", nodeLabel(node), err)
+		}
 
-	if err := it.callFlarnessSemanticsAction(conn, isolateID, node.ID, "longPress", ""); err != nil {
-		return nil, fmt.Errorf("longPress failed on %s: %w", nodeLabel(node), err)
-	}
-
-	return &InteractionResult{
-		Status:  "ok",
-		Action:  "longPress",
-		Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
-		Target:  nodeLabel(node),
-		Details: fmt.Sprintf("semantics longPress on node #%d (duration=%dms)", node.ID, durationMs),
-	}, nil
+		return &InteractionResult{
+			Status:  "ok",
+			Action:  "longPress",
+			Finder:  fmt.Sprintf("%s=%q", finder.By, finder.Value),
+			Target:  nodeLabel(node),
+			Details: fmt.Sprintf("semantics longPress on node #%d (duration=%dms)", node.ID, durationMs),
+		}, nil
+	})
 }
 
 // WaitFor waits for a widget matching the finder to appear.
@@ -301,14 +279,10 @@ func (it *Interactor) WaitFor(finder Finder, timeout time.Duration) (*Interactio
 	deadline := startTime.Add(timeout)
 	interval := 500 * time.Millisecond
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, fmt.Errorf("waitFor setup failed: %w", err)
-	}
-	defer conn.Close()
-
 	for time.Now().Before(deadline) {
-		node, err := it.findNode(conn, isolateID, finder)
+		node, err := withInteractionSession(it, func(conn *websocket.Conn, isolateID string) (*SemanticsNode, error) {
+			return it.findNode(conn, isolateID, finder)
+		})
 		if err == nil && node != nil {
 			return &InteractionResult{
 				Status:  "ok",
@@ -330,13 +304,9 @@ func (it *Interactor) GetSemanticsTree() ([]*SemanticsNode, error) {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 
-	conn, isolateID, err := it.setup()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-
-	return it.getSemanticsTree(conn, isolateID)
+	return withInteractionSession(it, func(conn *websocket.Conn, isolateID string) ([]*SemanticsNode, error) {
+		return it.getSemanticsTree(conn, isolateID)
+	})
 }
 
 func (it *Interactor) setup() (*websocket.Conn, string, error) {
@@ -357,6 +327,37 @@ func (it *Interactor) setup() (*websocket.Conn, string, error) {
 
 	_ = it.ensureSemantics(conn, isolateID)
 	return conn, isolateID, nil
+}
+
+func withInteractionSession[T any](it *Interactor, fn func(conn *websocket.Conn, isolateID string) (T, error)) (T, error) {
+	var zero T
+	var lastErr error
+
+	for attempt := 1; attempt <= interactionAttempts; attempt++ {
+		conn, isolateID, err := it.setup()
+		if err != nil {
+			lastErr = err
+			if !isTransientInteractionError(err) || attempt == interactionAttempts {
+				return zero, err
+			}
+			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+			continue
+		}
+
+		result, err := fn(conn, isolateID)
+		conn.Close()
+		if err == nil {
+			return result, nil
+		}
+
+		lastErr = err
+		if !isTransientInteractionError(err) || attempt == interactionAttempts {
+			return zero, err
+		}
+		time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+	}
+
+	return zero, lastErr
 }
 
 func (it *Interactor) connect() (*websocket.Conn, error) {
@@ -381,6 +382,19 @@ var rpcRequestID int64
 
 func nextRPCID() int64 {
 	return atomic.AddInt64(&rpcRequestID, 1)
+}
+
+func isTransientInteractionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "i/o timeout") ||
+		strings.Contains(message, "timeout") ||
+		strings.Contains(message, "eof") ||
+		strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "broken pipe") ||
+		strings.Contains(message, "use of closed network connection")
 }
 
 func (it *Interactor) sendRPCWithTimeout(conn *websocket.Conn, method string, params map[string]any, timeout time.Duration) (json.RawMessage, error) {

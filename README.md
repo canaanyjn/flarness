@@ -11,8 +11,8 @@ AI agents are rewriting the development flow. To effectively manage a Flutter ap
 - **JSON-First**: Every command outputs valid JSON, suitable for immediate parsing.
 - **Daemon Management**: Run a background flarness daemon to keep the Flutter VM service alive and responsive.
 - **Full Control**: Start, stop, restart, and hot-reload Flutter apps programmatically.
-- **State Inspection**: Capture UI snapshots, screenshots, and analyze project health in real-time.
-- **UI Automation**: Tap, type, wait, scroll, swipe, and long press through Flutter semantics + debug service extensions.
+- **State Inspection**: Capture screenshots, inspect UI structure, and analyze project health in real-time.
+- **UI Automation**: Drive taps, typing, waits, scrolling, swipes, and long presses through grouped interaction subcommands.
 - **AI-Friendly Help**: A built-in `help` command that outputs command specifications in JSON.
 
 ## 📦 Installation
@@ -41,16 +41,27 @@ flarness start --project /path/to/flutter_project --device chrome
 flarness status
 ```
 
-### Capture a UI Snapshot
+### Capture a UI Screenshot
 ```bash
-flarness snapshot
+flarness screenshot
+```
+
+### Inspect the current UI structure
+```bash
+flarness inspect
+```
+
+### Choose the right view
+```text
+inspect   = structure/debugging view (widget tree or render tree)
+semantics = automation/interaction view (labels, actions, focus, bounds)
 ```
 
 ### Drive the UI
 ```bash
-flarness tap --text "Login"
-flarness type --value "hello@example.com"
-flarness wait --text "Success"
+flarness interact tap --text "Login"
+flarness interact type --value "hello@example.com"
+flarness interact wait --text "Success"
 ```
 
 ### Get AI-readable help
@@ -65,10 +76,9 @@ flarness help [command]
 - `reload`: Perform a Hot Reload.
 - `restart`: Perform a Hot Restart.
 - `screenshot`: Capture an image of the current screen.
-- `snapshot`: Get a structured tree of the current UI.
-- `semantics`: Dump the semantics tree used for automation.
-- `tap` / `type` / `wait`: Perform basic UI automation.
-- `scroll` / `swipe` / `longpress`: Perform richer gestures.
+- `inspect`: Get the structural debugging view of the current UI.
+- `semantics`: Get the automation-facing view used for targeting and interaction.
+- `interact`: Group UI interaction subcommands such as `tap`, `type`, `wait`, `scroll`, `swipe`, and `longpress`.
 - `logs`: Stream recent records from the application log.
 - `status`: Check if the daemon is running and what it's controlling.
 - `help`: Get structural information about these commands.

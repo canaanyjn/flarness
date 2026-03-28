@@ -105,3 +105,31 @@ func TestResolveCDPURL(t *testing.T) {
 		}
 	}
 }
+
+func TestVMServiceURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		debugURL string
+		want     string
+	}{
+		{
+			name:     "ws url",
+			debugURL: "ws://127.0.0.1:1234/abc=/ws",
+			want:     "http://127.0.0.1:1234/abc=",
+		},
+		{
+			name:     "wss url",
+			debugURL: "wss://example.com/def/ws",
+			want:     "https://example.com/def",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewScreenshotter("", "macos", tt.debugURL, "")
+			if got := s.vmServiceURL(); got != tt.want {
+				t.Fatalf("vmServiceURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

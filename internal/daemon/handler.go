@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/canaanyjn/flarness/internal/analyzer"
@@ -46,8 +45,6 @@ func (h *Handler) Handle(cmd model.Command) model.Response {
 		return h.handleScreenshot()
 	case "inspect":
 		return h.handleInspect(cmd.Args)
-	case "snapshot":
-		return h.handleSnapshot(cmd.Args)
 	case "semantics":
 		return h.handleSemantics(cmd.Args)
 	case "tap":
@@ -362,111 +359,6 @@ func (h *Handler) handleInspect(args map[string]any) model.Response {
 	return model.Response{
 		OK:   true,
 		Data: respData,
-	}
-}
-
-func (h *Handler) handleSnapshot(args map[string]any) model.Response {
-	debugURL := ""
-	if h.daemon.procMgr != nil {
-		debugURL = h.daemon.procMgr.DebugURL
-	}
-
-	if debugURL == "" {
-		return model.Response{
-			OK:    false,
-			Error: "flutter app not running or no debug URL available",
-		}
-	}
-
-	// Run screenshot and inspect concurrently.
-	type screenshotResult struct {
-		result *snapshot.ScreenshotResult
-		err    error
-	}
-	type inspectResult struct {
-		data map[string]any
-		err  error
-	}
-
-	var wg sync.WaitGroup
-	var ssResult screenshotResult
-	var insResult inspectResult
-
-	screenshotDir := h.screenshotDir()
-
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		s := snapshot.NewScreenshotter(
-			h.daemon.project,
-			h.daemon.device,
-			debugURL,
-			screenshotDir,
-		)
-		r, err := s.Capture()
-		ssResult = screenshotResult{result: r, err: err}
-	}()
-
-	go func() {
-		defer wg.Done()
-		maxDepth := 0
-		if v, ok := args["max_depth"]; ok {
-			if n, ok := v.(float64); ok {
-				maxDepth = int(n)
-			}
-		}
-		data, err := h.runInspectSubprocess(debugURL, maxDepth)
-		if err != nil {
-			insResult = inspectResult{err: err}
-			return
-		}
-		insResult = inspectResult{data: data}
-	}()
-
-	wg.Wait()
-
-	// Build response even if one part failed.
-	resp := model.SnapshotResponse{
-		Status: "ok",
-	}
-
-	if ssResult.err != nil {
-		resp.Status = "partial"
-		fmt.Fprintf(os.Stderr, "[flarness] screenshot failed: %v\n", ssResult.err)
-	} else if ssResult.result != nil {
-		resp.Screenshot = model.ScreenshotResponse{
-			Status: "ok",
-			Path:   ssResult.result.Path,
-			Size:   ssResult.result.Size,
-			Device: ssResult.result.Device,
-		}
-	}
-
-	if insResult.err != nil {
-		if resp.Status == "partial" {
-			resp.Status = "error"
-		} else {
-			resp.Status = "partial"
-		}
-		fmt.Fprintf(os.Stderr, "[flarness] inspect failed: %v\n", insResult.err)
-	} else if insResult.data != nil {
-		resp.WidgetTree = insResult.data["widget_tree"]
-		resp.RenderTree = stringValue(insResult.data["render_tree"], "")
-		resp.Summary = insResult.data["summary"]
-	}
-
-	// Both failed.
-	if ssResult.err != nil && insResult.err != nil {
-		return model.Response{
-			OK:    false,
-			Error: fmt.Sprintf("screenshot: %v; inspect: %v", ssResult.err, insResult.err),
-		}
-	}
-
-	return model.Response{
-		OK:   true,
-		Data: resp,
 	}
 }
 
