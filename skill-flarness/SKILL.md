@@ -20,11 +20,40 @@ The important operating model is:
 
 ## Preconditions
 
-- `flarness` must already be installed in a system location and available on `PATH`.
+- `flarness` should be available on `PATH`.
 - Flutter must be installed and usable from the shell.
 - The target directory must be a Flutter project with `pubspec.yaml`.
 - The default device is `chrome` if no device is specified.
 - Flarness stores runtime files under `~/.flarness`.
+
+## Installing Flarness
+
+- If `flarness` is missing, install it before trying to operate the app.
+- For Darwin/Linux hosts, prefer the published installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/canaanyjn/flarness/main/release/install.sh | sh
+```
+
+- To install a specific release into a user-writable directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/canaanyjn/flarness/main/release/install.sh | \
+  RELEASE_VERSION=v0.1.0 INSTALL_DIR="$HOME/.local/bin" sh
+```
+
+- If the environment is already inside the Flarness repo, building from source is also acceptable:
+
+```bash
+make build
+sudo make install
+```
+
+- After installation, verify with:
+
+```bash
+flarness help
+```
 
 ## Default workflow
 

@@ -5,14 +5,69 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="flarness"
 VERSION="${RELEASE_VERSION:-$(git -C "$ROOT_DIR" describe --tags --always 2>/dev/null || echo dev)}"
 DIST_DIR="$ROOT_DIR/release/dist/$VERSION"
-
-TARGETS=(
-  "darwin amd64 tar.gz"
-  "darwin arm64 tar.gz"
-  "linux amd64 tar.gz"
-  "linux arm64 tar.gz"
-  "windows amd64 zip"
+DEFAULT_TARGETS=(
+  "darwin/amd64/tar.gz"
+  "darwin/arm64/tar.gz"
+  "linux/amd64/tar.gz"
+  "linux/arm64/tar.gz"
+  "windows/amd64/zip"
 )
+
+usage() {
+  cat <<'EOF'
+Usage: ./release/build.sh [target...]
+
+Targets use the form <goos>/<goarch>[/archive].
+
+Examples:
+  ./release/build.sh
+  ./release/build.sh darwin/arm64 linux/amd64
+  ./release/build.sh darwin/amd64/tar.gz
+
+Environment:
+  RELEASE_VERSION   Override the release version/tag.
+  RELEASE_TARGETS   Space-separated target list, used when no CLI targets are given.
+EOF
+}
+
+normalize_target() {
+  local raw="$1"
+  local goos goarch archive
+  IFS='/' read -r goos goarch archive <<<"$raw"
+  if [[ -z "${goos:-}" || -z "${goarch:-}" ]]; then
+    echo "invalid target: $raw" >&2
+    exit 1
+  fi
+  if [[ -z "${archive:-}" ]]; then
+    if [[ "$goos" == "windows" ]]; then
+      archive="zip"
+    else
+      archive="tar.gz"
+    fi
+  fi
+  printf '%s %s %s\n' "$goos" "$goarch" "$archive"
+}
+
+resolve_targets() {
+  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+  fi
+
+  if (($# > 0)); then
+    printf '%s\n' "$@"
+    return
+  fi
+
+  if [[ -n "${RELEASE_TARGETS:-}" ]]; then
+    for target in ${RELEASE_TARGETS}; do
+      printf '%s\n' "$target"
+    done
+    return
+  fi
+
+  printf '%s\n' "${DEFAULT_TARGETS[@]}"
+}
 
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
@@ -55,10 +110,17 @@ build_one() {
   rm -rf "$work_dir"
 }
 
-for target in "${TARGETS[@]}"; do
+while IFS= read -r target; do
+  [[ -z "$target" ]] && continue
+  normalized="$(normalize_target "$target")"
   # shellcheck disable=SC2086
-  build_one $target
-done
+  build_one $normalized
+done < <(resolve_targets "$@")
+
+if ! compgen -G "$DIST_DIR/*" >/dev/null; then
+  echo "no release artifacts were built" >&2
+  exit 1
+fi
 
 (
   cd "$DIST_DIR"

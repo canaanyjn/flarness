@@ -17,6 +17,14 @@ AI agents are rewriting the development flow. To effectively manage a Flutter ap
 
 ## 📦 Installation
 
+Option 1: install a published release on Darwin/Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/canaanyjn/flarness/main/release/install.sh | sh
+```
+
+Option 2: build from source
+
 Required: Go 1.22+
 
 ```bash
