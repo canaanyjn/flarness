@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/canaanyjn/flarness/internal/daemon"
+	"github.com/canaanyjn/flarness/internal/ipc"
+	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/canaanyjn/flarness/internal/platform"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +44,42 @@ var startCmd = &cobra.Command{
 			device = platform.PickDefaultDevice()
 		}
 
+		client := ipc.NewClient()
+		if client.IsRunning() {
+			resp, err := client.Send(model.Command{Cmd: "status"})
+			if err != nil {
+				printError("failed to query running daemon: " + err.Error())
+			}
+			if !resp.OK {
+				printError(resp.Error)
+			}
+
+			status, ok := resp.Data.(map[string]any)
+			if !ok {
+				printError("invalid status response from running daemon")
+			}
+
+			runningProject, _ := status["project"].(string)
+			runningDevice, _ := status["device"].(string)
+			if runningProject == project && runningDevice == device {
+				printJSON(map[string]any{
+					"status":        "ok",
+					"device":        device,
+					"project":       project,
+					"message":       "daemon reused",
+					"reused":        true,
+					"flutter_state": status["flutter_state"],
+					"url":           status["url"],
+				})
+				return
+			}
+
+			printError(fmt.Sprintf(
+				"daemon already running for project=%s device=%s; stop it before starting project=%s device=%s",
+				runningProject, runningDevice, project, device,
+			))
+		}
+
 		d := daemon.New()
 		if err := d.Start(project, device, startExtraArgs, false); err != nil {
 			printError(err.Error())
@@ -52,13 +90,14 @@ var startCmd = &cobra.Command{
 			"device":  device,
 			"project": project,
 			"message": "daemon started",
+			"reused":  false,
 		})
 	},
 }
 
 func init() {
 	startCmd.Flags().StringVarP(&startProject, "project", "p", "", "path to Flutter project (default: current directory)")
-	startCmd.Flags().StringVarP(&startDevice, "device", "d", "", "target device (default: chrome)")
+	startCmd.Flags().StringVarP(&startDevice, "device", "d", "", "target device (default: auto-detect)")
 	startCmd.Flags().StringSliceVar(&startExtraArgs, "extra-args", nil, "extra arguments for flutter run")
 	rootCmd.AddCommand(startCmd)
 }

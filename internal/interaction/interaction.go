@@ -501,17 +501,26 @@ func (it *Interactor) findNode(conn *websocket.Conn, isolateID string, finder Fi
 		return nil, err
 	}
 
-	var matches []*SemanticsNode
+	var exactMatches []*SemanticsNode
+	var fuzzyMatches []*SemanticsNode
 	var search func(nodes []*SemanticsNode)
 	search = func(nodes []*SemanticsNode) {
 		for _, n := range nodes {
-			if matchesFinder(n, finder) {
-				matches = append(matches, n)
+			switch finderScore(n, finder) {
+			case 2:
+				exactMatches = append(exactMatches, n)
+			case 1:
+				fuzzyMatches = append(fuzzyMatches, n)
 			}
 			search(n.Children)
 		}
 	}
 	search(nodes)
+
+	matches := exactMatches
+	if len(matches) == 0 {
+		matches = fuzzyMatches
+	}
 
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("no element found for %s=%q", finder.By, finder.Value)
@@ -524,23 +533,47 @@ func (it *Interactor) findNode(conn *websocket.Conn, isolateID string, finder Fi
 	return matches[idx], nil
 }
 
-func matchesFinder(node *SemanticsNode, finder Finder) bool {
+func finderScore(node *SemanticsNode, finder Finder) int {
 	switch finder.By {
 	case FindByText:
-		return strings.Contains(strings.ToLower(node.Label), strings.ToLower(finder.Value)) ||
-			strings.Contains(strings.ToLower(node.Value), strings.ToLower(finder.Value))
+		return textScore(node.Label, finder.Value, node.Value)
 	case FindByTooltip:
-		return strings.Contains(strings.ToLower(node.Hint), strings.ToLower(finder.Value))
+		return textScore(node.Hint, finder.Value)
 	case FindByType:
 		for _, f := range node.Flags {
 			if strings.Contains(strings.ToLower(f), strings.ToLower(finder.Value)) {
-				return true
+				return 1
 			}
 		}
-		return false
+		return 0
 	default:
-		return false
+		return 0
 	}
+}
+
+func textScore(candidates ...string) int {
+	if len(candidates) < 2 {
+		return 0
+	}
+	target := strings.ToLower(candidates[1])
+	for idx, candidate := range candidates {
+		if idx == 1 {
+			continue
+		}
+		value := strings.ToLower(candidate)
+		if value == target {
+			return 2
+		}
+	}
+	for idx, candidate := range candidates {
+		if idx == 1 {
+			continue
+		}
+		if strings.Contains(strings.ToLower(candidate), target) {
+			return 1
+		}
+	}
+	return 0
 }
 
 func (it *Interactor) callFlarnessSemanticsAction(conn *websocket.Conn, isolateID string, nodeID int, action string, args string) error {

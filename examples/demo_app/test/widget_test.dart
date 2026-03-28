@@ -1,30 +1,100 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:demo_app/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:demo_app/main.dart';
-
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('creates an issue from the composer and selects it', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MyApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('open-create-issue-button')),
+    );
+    await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('issue-title-input')),
+        matching: find.byType(EditableText),
+      ),
+      '下班',
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('create-issue-button')),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('create-issue-button')));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Created FL-104 下班'), findsOneWidget);
+    expect(find.text('FL-104'), findsWidgets);
+    expect(find.text('下班'), findsWidgets);
+    expect(find.text('Start 下班'), findsOneWidget);
+  });
+
+  testWidgets('moves the selected issue through the workflow', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MyApp());
+
+    await tester.tap(find.byKey(const ValueKey<String>('issue-row-FL-102')));
+    await tester.pumpAndSettle();
+    expect(find.text('Tighten daemon restart recovery'), findsWidgets);
+
+    await tester.ensureVisible(find.text('Start Tighten daemon restart recovery'));
+    await tester.tap(find.text('Start Tighten daemon restart recovery'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Moved FL-102 Tighten daemon restart recovery to In Progress'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Complete Tighten daemon restart recovery'),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(find.text('Complete Tighten daemon restart recovery'));
+    await tester.tap(find.text('Complete Tighten daemon restart recovery'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Completed FL-102 Tighten daemon restart recovery'),
+      findsOneWidget,
+    );
+    expect(find.text('Reopen Tighten daemon restart recovery'), findsOneWidget);
+  });
+
+  testWidgets('search and filter narrow the issue list', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MyApp());
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('search-input')),
+      'semantics',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ship semantics tree snapshots'), findsWidgets);
+    expect(find.text('Tighten daemon restart recovery'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey<String>('filter-done')));
+    await tester.pumpAndSettle();
+    expect(find.text('Ship semantics tree snapshots'), findsWidgets);
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('search-input')),
+      '',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ship semantics tree snapshots'), findsWidgets);
+    expect(find.text('Polish onboarding command palette'), findsNothing);
   });
 }
