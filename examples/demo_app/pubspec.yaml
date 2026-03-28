@@ -30,8 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flarness_debug:
-    path: ../../packages/flarness_debug
+  flarness_plugin:
+    path: ../../packages/flarness_plugin
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

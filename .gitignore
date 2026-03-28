@@ -1,5 +1,7 @@
 /bin/
 *.exe
 .DS_Store
+.dart_tool/
+/packages/*/pubspec.lock
 /flarness
 /release/dist/

@@ -1,5 +1,5 @@
-name: flarness_debug
-description: Debug-only Flutter service extensions for Flarness UI automation.
+name: flarness_plugin
+description: Debug-only Flutter integration package for Flarness UI automation.
 version: 0.1.0
 homepage: https://github.com/canaanyjn/flarness
 

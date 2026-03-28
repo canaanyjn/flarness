@@ -96,10 +96,21 @@ flarness help [command]
 Interactive commands require the Flutter app to register `ext.flarness.*`
 service extensions in debug mode.
 
-Use the bundled package:
+Use the bundled Flutter integration package:
 
-- [packages/flarness_debug](/Users/tcn/WorkSpace/Programming/Tools/flarness/packages/flarness_debug)
+- [packages/flarness_plugin](/Users/tcn/WorkSpace/Programming/Tools/flarness/packages/flarness_plugin)
 - [docs/flutter-debug-package.md](/Users/tcn/WorkSpace/Programming/Tools/flarness/docs/flutter-debug-package.md)
+
+Recommended dependency for external apps:
+
+```yaml
+dependencies:
+  flarness_plugin:
+    git:
+      url: https://github.com/canaanyjn/flarness.git
+      path: packages/flarness_plugin
+      ref: v0.1.0
+```
 
 ## 🤝 License
 

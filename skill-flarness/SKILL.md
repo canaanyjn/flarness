@@ -22,6 +22,8 @@ The important operating model is:
 
 - `flarness` should be available on `PATH`.
 - Flutter must be installed and usable from the shell.
+- For `semantics` and `interact` commands to work, the app should include the
+  Flutter-side `flarness_plugin` package in debug builds.
 - The target directory must be a Flutter project with `pubspec.yaml`.
 - The default device is `chrome` if no device is specified.
 - Flarness stores runtime files under `~/.flarness`.

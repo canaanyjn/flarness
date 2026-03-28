@@ -1,8 +1,8 @@
-import 'package:flarness_debug/flarness_debug.dart';
+import 'package:flarness_plugin/flarness_plugin.dart';
 import 'package:flutter/material.dart';
 
 void main() {
-  FlarnessDebugBinding.ensureInitialized();
+  FlarnessPluginBinding.ensureInitialized();
   runApp(const MyApp());
 }
 

@@ -10,8 +10,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// Registers the `ext.flarness.*` VM service extensions used by the Go daemon.
-class FlarnessDebugBinding {
-  FlarnessDebugBinding._();
+class FlarnessPluginBinding {
+  FlarnessPluginBinding._();
 
   static bool _initialized = false;
   static SemanticsHandle? _semanticsHandle;
