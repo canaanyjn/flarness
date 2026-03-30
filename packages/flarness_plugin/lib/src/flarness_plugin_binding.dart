@@ -29,6 +29,10 @@ class FlarnessPluginBinding {
     _semanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
 
     developer.registerExtension('ext.flarness.ping', _handlePing);
+    developer.registerExtension(
+      'ext.flarness.dumpSemantics',
+      _handleDumpSemantics,
+    );
     developer.registerExtension('ext.flarness.tapAt', _handleTapAt);
     developer.registerExtension('ext.flarness.type', _handleType);
     developer.registerExtension('ext.flarness.swipe', _handleSwipe);
@@ -74,6 +78,35 @@ class FlarnessPluginBinding {
         'y': y,
         'focused_editable': editable != null,
       });
+    } catch (error, stackTrace) {
+      return _error('$error', stackTrace: stackTrace);
+    }
+  }
+
+  static Future<developer.ServiceExtensionResponse> _handleDumpSemantics(
+    String method,
+    Map<String, String> parameters,
+  ) async {
+    try {
+      final owner = _semanticsOwner();
+      if (owner == null) {
+        return _error(
+          'semantics owner unavailable; ensure flarness_plugin is initialized in debug mode',
+        );
+      }
+
+      final root = owner.rootSemanticsNode;
+      if (root == null) {
+        return _error(
+          'semantics tree unavailable; ensure flarness_plugin is initialized after WidgetsFlutterBinding',
+        );
+      }
+
+      final payload = <String, Object?>{
+        'status': 'ok',
+        'nodes': [_serializeSemanticsNode(root)],
+      };
+      return _ok(payload);
     } catch (error, stackTrace) {
       return _error('$error', stackTrace: stackTrace);
     }
@@ -296,7 +329,8 @@ class FlarnessPluginBinding {
   }
 
   static EditableTextState? _findFocusedEditableText() {
-    final Element? context = FocusManager.instance.primaryFocus?.context as Element?;
+    final Element? context =
+        FocusManager.instance.primaryFocus?.context as Element?;
     EditableTextState? focused;
 
     EditableTextState? inspect(Element element) {
@@ -505,6 +539,48 @@ class FlarnessPluginBinding {
   static int _nextPointer() {
     _pointerCounter += 1;
     return _pointerCounter;
+  }
+
+  static Map<String, Object?> _serializeSemanticsNode(SemanticsNode node) {
+    final rect = node.rect;
+    final data = node.getSemanticsData();
+    return <String, Object?>{
+      'id': node.id,
+      'label': node.label,
+      'value': node.value,
+      'hint': node.hint,
+      'rect': <String, Object?>{
+        'left': rect.left,
+        'top': rect.top,
+        'width': rect.width,
+        'height': rect.height,
+      },
+      'actions': _serializeActions(data.actions),
+      'flags': data.flagsCollection.toStrings(),
+      'children': node
+          .debugListChildrenInOrder(DebugSemanticsDumpOrder.traversalOrder)
+          .map(_serializeSemanticsNode)
+          .toList(growable: false),
+    };
+  }
+
+  static List<String> _serializeActions(int actions) {
+    final values = <String>[];
+    for (final action in SemanticsAction.values) {
+      if (actions & action.index != 0) {
+        values.add(_describeEnum(action));
+      }
+    }
+    return values;
+  }
+
+  static String _describeEnum(Object value) {
+    final raw = value.toString();
+    final dot = raw.indexOf('.');
+    if (dot >= 0 && dot + 1 < raw.length) {
+      return raw.substring(dot + 1);
+    }
+    return raw;
   }
 
   static Future<void> _waitForTextCommit(

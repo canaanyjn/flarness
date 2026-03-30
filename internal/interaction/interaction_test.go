@@ -1,6 +1,9 @@
 package interaction
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRectCenter(t *testing.T) {
 	r := Rect{Left: 100, Top: 200, Width: 50, Height: 60}
@@ -173,6 +176,24 @@ To generate semantics, try turning on an assistive technology (like VoiceOver or
 	reason := semanticsUnavailableReason(msg)
 	if reason == "" {
 		t.Fatalf("expected non-empty reason for unavailable semantics message")
+	}
+}
+
+func TestNormalizeExtensionError(t *testing.T) {
+	err := normalizeExtensionError(errString(`RPC error: Unknown method "ext.flarness.tapAt"`), "ext.flarness.tapAt")
+	if err == nil || !strings.Contains(err.Error(), "flarness_plugin") {
+		t.Fatalf("expected plugin guidance error, got %v", err)
+	}
+}
+
+func TestDecodeSemanticsDumpPayload(t *testing.T) {
+	raw := []byte(`{"result":"{\"status\":\"ok\",\"nodes\":[{\"id\":1,\"label\":\"Login\",\"rect\":{\"left\":0,\"top\":0,\"width\":10,\"height\":10}}]}"}`)
+	payload, err := decodeSemanticsDumpPayload(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(payload.Nodes) != 1 || payload.Nodes[0].Label != "Login" {
+		t.Fatalf("unexpected payload: %+v", payload)
 	}
 }
 

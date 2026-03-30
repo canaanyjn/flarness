@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -131,5 +132,29 @@ func TestVMServiceURL(t *testing.T) {
 				t.Fatalf("vmServiceURL() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsPNGData(t *testing.T) {
+	if !isPNGData([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00}) {
+		t.Fatal("expected valid PNG signature")
+	}
+	if isPNGData([]byte("skiapict")) {
+		t.Fatal("skia picture must not be treated as PNG")
+	}
+}
+
+func TestDetectScreenshotFormat(t *testing.T) {
+	if got := detectScreenshotFormat([]byte("skiapict")); got != "skia picture" {
+		t.Fatalf("detectScreenshotFormat() = %q", got)
+	}
+	if got := detectScreenshotFormat(nil); got != "empty data" {
+		t.Fatalf("detectScreenshotFormat(nil) = %q", got)
+	}
+}
+
+func TestCaptureFlutterFallbackUsesPlainScreenshot(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("shell unavailable")
 	}
 }

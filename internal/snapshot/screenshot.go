@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,8 +14,6 @@ import (
 
 	"github.com/gorilla/websocket"
 )
-
-const screenshotSkiaType = "skia"
 
 // Screenshotter captures screenshots from the running Flutter app.
 type Screenshotter struct {
@@ -152,9 +151,8 @@ func (s *Screenshotter) captureCDP(outPath string) (*ScreenshotResult, error) {
 func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error) {
 	args := []string{"screenshot", "--out", outPath}
 
-	// If we have a debug URL, prefer a VM-service-backed Skia capture.
 	if s.debugURL != "" {
-		args = append(args, "--type", screenshotSkiaType, "--vm-service-url", s.vmServiceURL())
+		args = append(args, "--vm-service-url", s.vmServiceURL())
 	}
 
 	cmd := exec.Command("flutter", args...)
@@ -162,21 +160,11 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		fallbackResult, fallbackOutput, fallbackErr := s.captureFlutterFallback(outPath)
+		if fallbackErr == nil {
+			return fallbackResult, nil
+		}
 		if s.debugURL != "" {
-			fallbackArgs := []string{"screenshot", "--out", outPath}
-			fallbackCmd := exec.Command("flutter", fallbackArgs...)
-			fallbackCmd.Dir = s.project
-			fallbackOutput, fallbackErr := fallbackCmd.CombinedOutput()
-			if fallbackErr == nil {
-				info, statErr := os.Stat(outPath)
-				if statErr == nil {
-					return &ScreenshotResult{
-						Path:   outPath,
-						Size:   formatSize(info.Size()),
-						Device: s.device,
-					}, nil
-				}
-			}
 			return nil, fmt.Errorf(
 				"flutter screenshot failed with vm-service capture: %w\nOutput: %s\nFallback output: %s",
 				err,
@@ -187,10 +175,47 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 		return nil, fmt.Errorf("flutter screenshot failed: %w\nOutput: %s", err, string(output))
 	}
 
-	// Check file was created.
+	result, validationErr := s.validateScreenshotFile(outPath)
+	if validationErr == nil {
+		return result, nil
+	}
+
+	fallbackResult, fallbackOutput, fallbackErr := s.captureFlutterFallback(outPath)
+	if fallbackErr == nil {
+		return fallbackResult, nil
+	}
+
+	return nil, fmt.Errorf("flutter screenshot produced a non-PNG artifact: %v\nOutput: %s\nFallback output: %s", validationErr, string(output), string(fallbackOutput))
+}
+
+func (s *Screenshotter) captureFlutterFallback(outPath string) (*ScreenshotResult, []byte, error) {
+	fallbackArgs := []string{"screenshot", "--out", outPath}
+	fallbackCmd := exec.Command("flutter", fallbackArgs...)
+	fallbackCmd.Dir = s.project
+	fallbackOutput, fallbackErr := fallbackCmd.CombinedOutput()
+	if fallbackErr != nil {
+		return nil, fallbackOutput, fallbackErr
+	}
+
+	result, err := s.validateScreenshotFile(outPath)
+	if err != nil {
+		return nil, fallbackOutput, err
+	}
+	return result, fallbackOutput, nil
+}
+
+func (s *Screenshotter) validateScreenshotFile(outPath string) (*ScreenshotResult, error) {
 	info, err := os.Stat(outPath)
 	if err != nil {
 		return nil, fmt.Errorf("screenshot file not found after capture")
+	}
+
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read screenshot: %w", err)
+	}
+	if !isPNGData(data) {
+		return nil, fmt.Errorf("expected PNG data, got %s", detectScreenshotFormat(data))
 	}
 
 	return &ScreenshotResult{
@@ -236,4 +261,21 @@ func formatSize(bytes int64) string {
 		return fmt.Sprintf("%.1fKB", float64(bytes)/1024)
 	}
 	return fmt.Sprintf("%.1fMB", float64(bytes)/(1024*1024))
+}
+
+func isPNGData(data []byte) bool {
+	return len(data) >= 8 && bytes.Equal(data[:8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+}
+
+func detectScreenshotFormat(data []byte) string {
+	if len(data) == 0 {
+		return "empty data"
+	}
+	if bytes.HasPrefix(data, []byte("skiapict")) {
+		return "skia picture"
+	}
+	if isPNGData(data) {
+		return "png"
+	}
+	return "unknown data"
 }

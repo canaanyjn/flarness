@@ -81,6 +81,12 @@ type extensionPayload struct {
 	Error           string `json:"error,omitempty"`
 }
 
+type semanticsDumpPayload struct {
+	Status string           `json:"status"`
+	Nodes  []*SemanticsNode `json:"nodes"`
+	Error  string           `json:"error,omitempty"`
+}
+
 // NewInteractor creates a new Interactor.
 func NewInteractor(debugURL string) *Interactor {
 	return &Interactor{debugURL: debugURL}
@@ -477,6 +483,9 @@ func (it *Interactor) getMainIsolateID(conn *websocket.Conn) (string, error) {
 }
 
 func (it *Interactor) ensureSemantics(conn *websocket.Conn, isolateID string) error {
+	if _, err := it.callFlarnessPing(conn, isolateID); err == nil {
+		return nil
+	}
 	_, err := it.sendRPCWithTimeout(conn, "ext.flutter.debugDumpSemanticsTreeInTraversalOrder", map[string]any{
 		"isolateId": isolateID,
 	}, 5*time.Second)
@@ -484,6 +493,12 @@ func (it *Interactor) ensureSemantics(conn *websocket.Conn, isolateID string) er
 }
 
 func (it *Interactor) getSemanticsTree(conn *websocket.Conn, isolateID string) ([]*SemanticsNode, error) {
+	if nodes, err := it.getSemanticsTreeFromPlugin(conn, isolateID); err == nil {
+		return nodes, nil
+	} else if !isMissingFlarnessExtensionError(err) {
+		return nil, err
+	}
+
 	result, err := it.sendRPC(conn, "ext.flutter.debugDumpSemanticsTreeInTraversalOrder", map[string]any{
 		"isolateId": isolateID,
 	})
@@ -601,7 +616,7 @@ func (it *Interactor) callFlarnessSemanticsAction(conn *websocket.Conn, isolateI
 	}
 
 	_, err := it.sendRPCWithTimeout(conn, "ext.flarness.semanticsAction", params, 5*time.Second)
-	return err
+	return normalizeExtensionError(err, "ext.flarness.semanticsAction")
 }
 
 func (it *Interactor) callFlarnessTapAt(conn *websocket.Conn, isolateID string, x, y float64) error {
@@ -612,7 +627,7 @@ func (it *Interactor) callFlarnessTapAt(conn *websocket.Conn, isolateID string, 
 	}
 
 	_, err := it.sendRPCWithTimeout(conn, "ext.flarness.tapAt", params, 5*time.Second)
-	return err
+	return normalizeExtensionError(err, "ext.flarness.tapAt")
 }
 
 func (it *Interactor) callFlarnessType(conn *websocket.Conn, isolateID string, text string, clear bool, appendMode bool) (*extensionPayload, error) {
@@ -629,7 +644,7 @@ func (it *Interactor) callFlarnessType(conn *websocket.Conn, isolateID string, t
 
 	raw, err := it.sendRPCWithTimeout(conn, "ext.flarness.type", params, 5*time.Second)
 	if err != nil {
-		return nil, err
+		return nil, normalizeExtensionError(err, "ext.flarness.type")
 	}
 
 	payload, err := decodeExtensionPayload(raw)
@@ -675,7 +690,60 @@ func (it *Interactor) callFlarnessSwipe(conn *websocket.Conn, isolateID string, 
 	}
 
 	_, err := it.sendRPCWithTimeout(conn, "ext.flarness.swipe", params, time.Duration(durationMs+5000)*time.Millisecond)
-	return err
+	return normalizeExtensionError(err, "ext.flarness.swipe")
+}
+
+func (it *Interactor) callFlarnessPing(conn *websocket.Conn, isolateID string) (*extensionPayload, error) {
+	raw, err := it.sendRPCWithTimeout(conn, "ext.flarness.ping", map[string]any{
+		"isolateId": isolateID,
+	}, 5*time.Second)
+	if err != nil {
+		return nil, normalizeExtensionError(err, "ext.flarness.ping")
+	}
+	return decodeExtensionPayload(raw)
+}
+
+func (it *Interactor) getSemanticsTreeFromPlugin(conn *websocket.Conn, isolateID string) ([]*SemanticsNode, error) {
+	raw, err := it.sendRPCWithTimeout(conn, "ext.flarness.dumpSemantics", map[string]any{
+		"isolateId": isolateID,
+	}, 5*time.Second)
+	if err != nil {
+		return nil, normalizeExtensionError(err, "ext.flarness.dumpSemantics")
+	}
+
+	payload, err := decodeSemanticsDumpPayload(raw)
+	if err != nil {
+		return nil, err
+	}
+	if payload.Status == "error" {
+		if payload.Error != "" {
+			return nil, fmt.Errorf(payload.Error)
+		}
+		return nil, fmt.Errorf("dumpSemantics service extension returned error")
+	}
+	if len(payload.Nodes) == 0 {
+		return nil, fmt.Errorf("semantics tree is empty — ensure flarness_plugin is initialized")
+	}
+	return payload.Nodes, nil
+}
+
+func decodeSemanticsDumpPayload(raw json.RawMessage) (*semanticsDumpPayload, error) {
+	var envelope struct {
+		Result string `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err == nil && envelope.Result != "" {
+		var payload semanticsDumpPayload
+		if err := json.Unmarshal([]byte(envelope.Result), &payload); err != nil {
+			return nil, fmt.Errorf("decode dumpSemantics result failed: %w", err)
+		}
+		return &payload, nil
+	}
+
+	var payload semanticsDumpPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("decode dumpSemantics payload failed: %w", err)
+	}
+	return &payload, nil
 }
 
 func semanticsUnavailableReason(dump string) string {
@@ -688,6 +756,25 @@ func semanticsUnavailableReason(dump string) string {
 	}
 
 	return ""
+}
+
+func normalizeExtensionError(err error, method string) error {
+	if err == nil {
+		return nil
+	}
+	message := err.Error()
+	if strings.Contains(strings.ToLower(message), "unknown method") && strings.Contains(message, method) {
+		return fmt.Errorf("%s is unavailable; ensure flarness_plugin is added to the app and FlarnessPluginBinding.ensureInitialized() runs in debug mode", method)
+	}
+	return err
+}
+
+func isMissingFlarnessExtensionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "ensure flarness_plugin is added to the app")
 }
 
 func resolveGlobalRects(nodes []*SemanticsNode, parentLeft, parentTop float64) {

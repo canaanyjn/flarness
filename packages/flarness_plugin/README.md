@@ -7,6 +7,7 @@ uses for UI automation in debug builds.
 ## What it provides
 
 - `ext.flarness.ping`
+- `ext.flarness.dumpSemantics`
 - `ext.flarness.tapAt`
 - `ext.flarness.type`
 - `ext.flarness.swipe`

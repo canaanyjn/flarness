@@ -47,6 +47,7 @@ void main() {
 ## 当前已注册的扩展
 
 - `ext.flarness.ping`
+- `ext.flarness.dumpSemantics`
 - `ext.flarness.tapAt`
 - `ext.flarness.type`
 - `ext.flarness.swipe`
