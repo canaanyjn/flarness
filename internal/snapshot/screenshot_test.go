@@ -158,3 +158,15 @@ func TestCaptureFlutterFallbackUsesPlainScreenshot(t *testing.T) {
 		t.Skip("shell unavailable")
 	}
 }
+
+func TestShouldUseNativeDesktopScreenshot(t *testing.T) {
+	if !shouldUseNativeDesktopScreenshot("macos", []byte("Screenshot not supported for macOS.")) {
+		t.Fatal("expected native desktop fallback for macOS unsupported message")
+	}
+	if shouldUseNativeDesktopScreenshot("chrome", []byte("Screenshot not supported for macOS.")) {
+		t.Fatal("web device must not use native desktop fallback")
+	}
+	if shouldUseNativeDesktopScreenshot("macos", []byte("some other flutter error")) {
+		t.Fatal("unexpected native desktop fallback for unrelated error")
+	}
+}

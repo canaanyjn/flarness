@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/canaanyjn/flarness/internal/platform"
 	"github.com/gorilla/websocket"
 )
 
@@ -149,17 +150,18 @@ func (s *Screenshotter) captureCDP(outPath string) (*ScreenshotResult, error) {
 
 // captureFlutter uses the `flutter screenshot` command for non-web platforms.
 func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error) {
-	args := []string{"screenshot", "--out", outPath}
-
-	if s.debugURL != "" {
-		args = append(args, "--vm-service-url", s.vmServiceURL())
-	}
+	args := s.flutterScreenshotArgs(outPath)
 
 	cmd := exec.Command("flutter", args...)
 	cmd.Dir = s.project
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		nativeResult, nativeErr := s.captureNativeDesktop(outPath, err, output)
+		if nativeErr == nil {
+			return nativeResult, nil
+		}
+
 		fallbackResult, fallbackOutput, fallbackErr := s.captureFlutterFallback(outPath)
 		if fallbackErr == nil {
 			return fallbackResult, nil
@@ -189,7 +191,7 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 }
 
 func (s *Screenshotter) captureFlutterFallback(outPath string) (*ScreenshotResult, []byte, error) {
-	fallbackArgs := []string{"screenshot", "--out", outPath}
+	fallbackArgs := s.flutterScreenshotArgs(outPath)
 	fallbackCmd := exec.Command("flutter", fallbackArgs...)
 	fallbackCmd.Dir = s.project
 	fallbackOutput, fallbackErr := fallbackCmd.CombinedOutput()
@@ -202,6 +204,20 @@ func (s *Screenshotter) captureFlutterFallback(outPath string) (*ScreenshotResul
 		return nil, fallbackOutput, err
 	}
 	return result, fallbackOutput, nil
+}
+
+func (s *Screenshotter) captureNativeDesktop(outPath string, flutterErr error, flutterOutput []byte) (*ScreenshotResult, error) {
+	if !shouldUseNativeDesktopScreenshot(s.device, flutterOutput) {
+		return nil, flutterErr
+	}
+
+	cmd := exec.Command("screencapture", "-x", outPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("native macOS screenshot failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return s.validateScreenshotFile(outPath)
 }
 
 func (s *Screenshotter) validateScreenshotFile(outPath string) (*ScreenshotResult, error) {
@@ -223,6 +239,15 @@ func (s *Screenshotter) validateScreenshotFile(outPath string) (*ScreenshotResul
 		Size:   formatSize(info.Size()),
 		Device: s.device,
 	}, nil
+}
+
+func (s *Screenshotter) flutterScreenshotArgs(outPath string) []string {
+	args := []string{"screenshot"}
+	if s.device != "" {
+		args = append(args, "-d", s.device)
+	}
+	args = append(args, "--out", outPath)
+	return args
 }
 
 func (s *Screenshotter) vmServiceURL() string {
@@ -278,4 +303,13 @@ func detectScreenshotFormat(data []byte) string {
 		return "png"
 	}
 	return "unknown data"
+}
+
+func shouldUseNativeDesktopScreenshot(device string, flutterOutput []byte) bool {
+	if !platform.IsMacOS(device) {
+		return false
+	}
+
+	lower := strings.ToLower(string(flutterOutput))
+	return strings.Contains(lower, "screenshot not supported for macos")
 }
