@@ -21,6 +21,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Defaults.Device != "chrome" {
 		t.Errorf("device: got %q, want chrome", cfg.Defaults.Device)
 	}
+	if len(cfg.Defaults.FlutterCommand) != 0 {
+		t.Errorf("flutter_command: got %#v, want nil", cfg.Defaults.FlutterCommand)
+	}
 	if !cfg.CDP.Enabled {
 		t.Error("cdp.enabled should be true by default")
 	}
@@ -38,6 +41,7 @@ func TestSaveAndLoad(t *testing.T) {
 
 	cfg := Default()
 	cfg.Defaults.Device = "macOS"
+	cfg.Defaults.FlutterCommand = []string{"./scripts/dev.sh"}
 	cfg.Log.BufferSize = 2000
 
 	if err := Save(cfg); err != nil {
@@ -54,6 +58,9 @@ func TestSaveAndLoad(t *testing.T) {
 	loaded := Load()
 	if loaded.Defaults.Device != "macOS" {
 		t.Errorf("device: got %q, want macOS", loaded.Defaults.Device)
+	}
+	if len(loaded.Defaults.FlutterCommand) != 1 || loaded.Defaults.FlutterCommand[0] != "./scripts/dev.sh" {
+		t.Errorf("flutter_command: got %#v, want [./scripts/dev.sh]", loaded.Defaults.FlutterCommand)
 	}
 	if loaded.Log.BufferSize != 2000 {
 		t.Errorf("buffer_size: got %d, want 2000", loaded.Log.BufferSize)

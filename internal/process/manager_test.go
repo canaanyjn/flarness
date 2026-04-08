@@ -31,7 +31,7 @@ func TestNewManager(t *testing.T) {
 		events = append(events, source+":"+line)
 	}
 
-	m := New("/test/project", "chrome", cb)
+	m := New("/test/project", "chrome", nil, cb)
 
 	if m.project != "/test/project" {
 		t.Errorf("project: got %q, want /test/project", m.project)
@@ -45,16 +45,35 @@ func TestNewManager(t *testing.T) {
 }
 
 func TestStartConfiguresNewProcessGroup(t *testing.T) {
-	m := New("/test/project", "chrome", nil)
+	m := New("/test/project", "chrome", nil, nil)
 	args := []string{"run", "--machine", "-d", "chrome"}
 	m.cmd = nil
 
-	cmd := buildFlutterCommand(m.project, m.device, nil)
+	cmd := buildFlutterCommand(m.project, m.device, nil, nil)
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
 		t.Fatal("expected flutter command to start in its own process group")
 	}
 	if len(cmd.Args) != len(args)+1 {
 		t.Fatalf("unexpected arg count: got %d", len(cmd.Args))
+	}
+}
+
+func TestBuildFlutterCommandUsesConfiguredWrapper(t *testing.T) {
+	cmd := buildFlutterCommand("/test/project", "macos", []string{"./scripts/dev.sh", "--api-base-url", "http://localhost:3000"}, []string{"--flavor", "dev"})
+
+	want := []string{
+		"./scripts/dev.sh",
+		"--api-base-url", "http://localhost:3000",
+		"run", "--machine", "-d", "macos",
+		"--flavor", "dev",
+	}
+	if len(cmd.Args) != len(want) {
+		t.Fatalf("arg count: got %d, want %d (%#v)", len(cmd.Args), len(want), cmd.Args)
+	}
+	for i := range want {
+		if cmd.Args[i] != want[i] {
+			t.Fatalf("arg[%d]: got %q, want %q (%#v)", i, cmd.Args[i], want[i], cmd.Args)
+		}
 	}
 }
 
@@ -77,7 +96,7 @@ func TestDescendantPIDsParsesProcessTree(t *testing.T) {
 }
 
 func TestManagerStateTransitions(t *testing.T) {
-	m := New("/test", "chrome", nil)
+	m := New("/test", "chrome", nil, nil)
 
 	if m.GetState() != StateIdle {
 		t.Fatalf("expected idle")
@@ -100,7 +119,7 @@ func TestManagerStateTransitions(t *testing.T) {
 }
 
 func TestReloadResultNotify(t *testing.T) {
-	m := New("/test", "chrome", nil)
+	m := New("/test", "chrome", nil, nil)
 	m.SetState(StateRunning)
 
 	// Simulate a reload: create the result channel.
@@ -129,7 +148,7 @@ func TestReloadResultNotify(t *testing.T) {
 }
 
 func TestReloadResultTimeout(t *testing.T) {
-	m := New("/test", "chrome", nil)
+	m := New("/test", "chrome", nil, nil)
 	m.SetState(StateRunning)
 	m.reloadResult = make(chan ReloadResult, 1)
 
@@ -141,7 +160,7 @@ func TestReloadResultTimeout(t *testing.T) {
 }
 
 func TestSendReloadNotRunning(t *testing.T) {
-	m := New("/test", "chrome", nil)
+	m := New("/test", "chrome", nil, nil)
 	// State is idle, reload should fail.
 	err := m.SendReload()
 	if err == nil {
@@ -150,7 +169,7 @@ func TestSendReloadNotRunning(t *testing.T) {
 }
 
 func TestSendRestartNotRunning(t *testing.T) {
-	m := New("/test", "chrome", nil)
+	m := New("/test", "chrome", nil, nil)
 	err := m.SendRestart()
 	if err == nil {
 		t.Error("expected error when restarting idle process")

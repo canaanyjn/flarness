@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/canaanyjn/flarness/internal/cliargs"
+	"github.com/canaanyjn/flarness/internal/config"
 	"github.com/canaanyjn/flarness/internal/daemon"
 	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
@@ -24,6 +25,8 @@ var startCmd = &cobra.Command{
 	Short: "Start the Flarness daemon and launch Flutter",
 	Long:  `Starts the Flarness background daemon which manages the Flutter process.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		cfg := config.Load()
+
 		// Resolve project path.
 		project := startProject
 		if project == "" {
@@ -49,6 +52,8 @@ var startCmd = &cobra.Command{
 		if err != nil {
 			printError("invalid --extra-args: " + err.Error())
 		}
+		extraArgs = append(append([]string{}, cfg.Defaults.ExtraArgs...), extraArgs...)
+		flutterCommand := append([]string{}, cfg.Defaults.FlutterCommand...)
 
 		client := ipc.NewClient()
 		if client.IsRunning() {
@@ -87,7 +92,7 @@ var startCmd = &cobra.Command{
 		}
 
 		d := daemon.New()
-		if err := d.Start(project, device, extraArgs, false); err != nil {
+		if err := d.Start(project, device, extraArgs, flutterCommand, false); err != nil {
 			printError(err.Error())
 		}
 

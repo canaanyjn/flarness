@@ -62,7 +62,7 @@ func New() *Daemon {
 
 // Start launches the daemon as a background process.
 // If foreground is true, runs in the current process (used by the spawned daemon itself).
-func (d *Daemon) Start(project, device string, extraArgs []string, foreground bool) error {
+func (d *Daemon) Start(project, device string, extraArgs []string, flutterCommand []string, foreground bool) error {
 	// Ensure base directory exists.
 	if err := os.MkdirAll(d.baseDir, 0755); err != nil {
 		return fmt.Errorf("cannot create directory %s: %w", d.baseDir, err)
@@ -78,14 +78,14 @@ func (d *Daemon) Start(project, device string, extraArgs []string, foreground bo
 	os.Remove(d.socketPath)
 
 	if foreground {
-		return d.runForeground(project, device, extraArgs)
+		return d.runForeground(project, device, extraArgs, flutterCommand)
 	}
 
-	return d.spawnBackground(project, device, extraArgs)
+	return d.spawnBackground(project, device, extraArgs, flutterCommand)
 }
 
 // spawnBackground launches a new flarness process in daemon mode.
-func (d *Daemon) spawnBackground(project, device string, extraArgs []string) error {
+func (d *Daemon) spawnBackground(project, device string, extraArgs []string, flutterCommand []string) error {
 	// Resolve the current executable path.
 	exe, err := os.Executable()
 	if err != nil {
@@ -98,6 +98,9 @@ func (d *Daemon) spawnBackground(project, device string, extraArgs []string) err
 	}
 	for _, a := range extraArgs {
 		args = append(args, "--extra-args", a)
+	}
+	for _, part := range flutterCommand {
+		args = append(args, "--flutter-command", part)
 	}
 
 	cmd := exec.Command(exe, args...)
@@ -129,7 +132,7 @@ func (d *Daemon) spawnBackground(project, device string, extraArgs []string) err
 }
 
 // runForeground runs the daemon in the current process (called by _daemon subcommand).
-func (d *Daemon) runForeground(project, device string, extraArgs []string) error {
+func (d *Daemon) runForeground(project, device string, extraArgs []string, flutterCommand []string) error {
 	d.project = project
 	d.device = device
 	d.startTime = time.Now()
@@ -161,7 +164,7 @@ func (d *Daemon) runForeground(project, device string, extraArgs []string) error
 	d.stderrParser = parser.NewStderrParser(d)
 
 	// Initialize and start the Flutter process.
-	d.procMgr = process.New(project, device, d.onProcessEvent)
+	d.procMgr = process.New(project, device, flutterCommand, d.onProcessEvent)
 	if err := d.procMgr.Start(extraArgs); err != nil {
 		fmt.Fprintf(os.Stderr, "[flarness] warning: flutter process failed to start: %v\n", err)
 		// Continue without flutter — daemon still serves IPC for status/stop.

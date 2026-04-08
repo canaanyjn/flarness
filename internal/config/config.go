@@ -16,15 +16,16 @@ type Config struct {
 
 // LogConfig holds log-related settings.
 type LogConfig struct {
-	MaxFileSize   string `yaml:"max_file_size"`   // e.g. "50MB"
-	RetentionDays int    `yaml:"retention_days"`  // default: 7
-	BufferSize    int    `yaml:"buffer_size"`     // default: 1000
+	MaxFileSize   string `yaml:"max_file_size"`  // e.g. "50MB"
+	RetentionDays int    `yaml:"retention_days"` // default: 7
+	BufferSize    int    `yaml:"buffer_size"`    // default: 1000
 }
 
 // DefaultConfig holds default run parameters.
 type DefaultConfig struct {
-	Device    string   `yaml:"device"`      // default: "chrome"
-	ExtraArgs []string `yaml:"extra_args"`
+	Device         string   `yaml:"device"` // default: "chrome"
+	ExtraArgs      []string `yaml:"extra_args"`
+	FlutterCommand []string `yaml:"flutter_command"`
 }
 
 // CDPConfig holds CDP bridge settings.

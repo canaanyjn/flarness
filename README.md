@@ -44,6 +44,20 @@ All commands return a JSON object with a `status` field.
 flarness start --project /path/to/flutter_project --device chrome
 ```
 
+### Configure a Flutter wrapper command
+If your project needs a wrapper instead of calling `flutter` directly, add it to `~/.flarness/config.yaml`:
+
+```yaml
+defaults:
+  flutter_command:
+    - /absolute/path/to/apps/mobile/scripts/dev.sh
+  extra_args:
+    - --flavor
+    - dev
+```
+
+Flarness will then execute the configured wrapper and append `run --machine`, the selected device, and any extra args.
+
 ### Get current status
 ```bash
 flarness status

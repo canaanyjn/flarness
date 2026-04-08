@@ -53,9 +53,10 @@ type Manager struct {
 	stdout io.ReadCloser
 	stderr io.ReadCloser
 
-	state   State
-	project string
-	device  string
+	state          State
+	project        string
+	device         string
+	flutterCommand []string
 
 	// Callback for each line of output (for parser to consume).
 	onEvent EventCallback
@@ -82,13 +83,14 @@ type ReloadResult struct {
 }
 
 // New creates a new process Manager.
-func New(project, device string, onEvent EventCallback) *Manager {
+func New(project, device string, flutterCommand []string, onEvent EventCallback) *Manager {
 	return &Manager{
-		project: project,
-		device:  device,
-		state:   StateIdle,
-		onEvent: onEvent,
-		doneCh:  make(chan struct{}),
+		project:        project,
+		device:         device,
+		flutterCommand: append([]string{}, flutterCommand...),
+		state:          StateIdle,
+		onEvent:        onEvent,
+		doneCh:         make(chan struct{}),
 	}
 }
 
@@ -101,7 +103,7 @@ func (m *Manager) Start(extraArgs []string) error {
 		return fmt.Errorf("flutter process already in state: %s", m.state)
 	}
 
-	m.cmd = buildFlutterCommand(m.project, m.device, extraArgs)
+	m.cmd = buildFlutterCommand(m.project, m.device, m.flutterCommand, extraArgs)
 
 	var err error
 
@@ -143,14 +145,18 @@ func (m *Manager) Start(extraArgs []string) error {
 	return nil
 }
 
-func buildFlutterCommand(project, device string, extraArgs []string) *exec.Cmd {
+func buildFlutterCommand(project, device string, flutterCommand []string, extraArgs []string) *exec.Cmd {
 	args := []string{"run", "--machine"}
 	if device != "" {
 		args = append(args, "-d", device)
 	}
 	args = append(args, extraArgs...)
 
-	cmd := exec.Command("flutter", args...)
+	command := []string{"flutter"}
+	if len(flutterCommand) > 0 {
+		command = append([]string{}, flutterCommand...)
+	}
+	cmd := exec.Command(command[0], append(command[1:], args...)...)
 	cmd.Dir = project
 	cmd.Env = append(os.Environ(), "FLUTTER_SUPPRESS_ANALYTICS=true")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
