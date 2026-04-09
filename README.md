@@ -58,19 +58,24 @@ defaults:
 
 Flarness will then execute the configured wrapper and append `run --machine`, the selected device, and any extra args.
 
+### List running sessions
+```bash
+flarness sessions list
+```
+
 ### Get current status
 ```bash
-flarness status
+flarness status --session <session>
 ```
 
 ### Capture a UI Screenshot
 ```bash
-flarness screenshot
+flarness screenshot --session <session>
 ```
 
 ### Inspect the current UI structure
 ```bash
-flarness inspect
+flarness inspect --session <session>
 ```
 
 ### Choose the right view
@@ -81,9 +86,9 @@ semantics = automation/interaction view (labels, actions, focus, bounds)
 
 ### Drive the UI
 ```bash
-flarness interact tap --text "Login"
-flarness interact type --value "hello@example.com"
-flarness interact wait --text "Success"
+flarness interact tap --session <session> --text "Login"
+flarness interact type --session <session> --value "hello@example.com"
+flarness interact wait --session <session> --text "Success"
 ```
 
 ### Get AI-readable help
@@ -94,7 +99,7 @@ flarness help [command]
 ## 📖 Command list
 
 - `start`: Start the Flarness daemon and launch the Flutter app.
-- `stop`: Stop the background daemon and terminate Flutter.
+- `stop`: Stop a specific background daemon session and terminate its Flutter app.
 - `reload`: Perform a Hot Reload.
 - `restart`: Perform a Hot Restart.
 - `screenshot`: Capture an image of the current screen.
@@ -102,7 +107,8 @@ flarness help [command]
 - `semantics`: Get the automation-facing view used for targeting and interaction.
 - `interact`: Group UI interaction subcommands such as `tap`, `type`, `wait`, `scroll`, `swipe`, and `longpress`.
 - `logs`: Stream recent records from the application log.
-- `status`: Check if the daemon is running and what it's controlling.
+- `status`: Check a specific daemon session and what it's controlling.
+- `sessions`: List known daemon sessions.
 - `help`: Get structural information about these commands.
 
 ## Flutter App Integration

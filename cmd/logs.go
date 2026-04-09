@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/spf13/cobra"
 )
@@ -29,13 +28,10 @@ Examples:
   flarness logs --limit 200              # Latest 200 logs
   flarness logs --since 30s              # Logs from last 30 seconds
   flarness logs --level error            # Only errors
-  flarness logs --grep "overflow"        # Regex search
+ flarness logs --grep "overflow"        # Regex search
   flarness logs --grep "Error" --since 5m --source framework`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := ipc.NewClient()
-		if !client.IsRunning() {
-			printError("daemon is not running — run 'flarness start' first")
-		}
+		client, _ := sessionClient(cmd)
 
 		queryArgs := map[string]any{}
 		if logsLimit > 0 {
@@ -76,6 +72,7 @@ Examples:
 }
 
 func init() {
+	addSessionFlag(logsCmd)
 	logsCmd.Flags().IntVar(&logsLimit, "limit", 0, "number of log entries to return (default: 50)")
 	logsCmd.Flags().StringVar(&logsSince, "since", "", "time filter (e.g. 30s, 5m, 1h)")
 	logsCmd.Flags().StringVar(&logsLevel, "level", "", "level filter (e.g. error, warning,error)")

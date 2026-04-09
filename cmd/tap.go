@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/spf13/cobra"
 )
@@ -39,11 +38,7 @@ Examples:
 			return nil
 		}
 
-		client := ipc.NewClient()
-		if !client.IsRunning() {
-			printError("daemon is not running — run 'flarness start' first")
-			return nil
-		}
+		client, _ := sessionClient(cmd)
 
 		resp, err := client.Send(model.Command{
 			Cmd:  "tap",
@@ -64,6 +59,7 @@ Examples:
 }
 
 func init() {
+	addSessionFlag(tapCmd)
 	tapCmd.Flags().String("text", "", "find by label text (partial match)")
 	tapCmd.Flags().String("type", "", "find by widget type/flag")
 	tapCmd.Flags().Int("index", 0, "0-based index when multiple matches")

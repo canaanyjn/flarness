@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/spf13/cobra"
 )
@@ -41,11 +40,7 @@ Examples:
 			return nil
 		}
 
-		client := ipc.NewClient()
-		if !client.IsRunning() {
-			printError("daemon is not running — run 'flarness start' first")
-			return nil
-		}
+		client, _ := sessionClient(cmd)
 
 		resp, err := client.Send(model.Command{
 			Cmd:  "swipe",
@@ -66,6 +61,7 @@ Examples:
 }
 
 func init() {
+	addSessionFlag(swipeCmd)
 	swipeCmd.Flags().String("text", "", "find by label text (partial match)")
 	swipeCmd.Flags().String("type", "", "find by widget type/flag")
 	swipeCmd.Flags().Float64("dx", 0, "horizontal swipe distance")

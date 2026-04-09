@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/spf13/cobra"
 )
@@ -40,11 +39,7 @@ Examples:
 			typeArgs["append"] = true
 		}
 
-		client := ipc.NewClient()
-		if !client.IsRunning() {
-			printError("daemon is not running — run 'flarness start' first")
-			return nil
-		}
+		client, _ := sessionClient(cmd)
 
 		resp, err := client.Send(model.Command{
 			Cmd:  "type",
@@ -65,6 +60,7 @@ Examples:
 }
 
 func init() {
+	addSessionFlag(typeCmd)
 	typeCmd.Flags().String("value", "", "text to type into the focused field")
 	typeCmd.Flags().Bool("clear", false, "clear the focused field")
 	typeCmd.Flags().Bool("append", false, "append text instead of replacing")

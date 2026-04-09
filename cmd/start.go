@@ -8,6 +8,7 @@ import (
 	"github.com/canaanyjn/flarness/internal/cliargs"
 	"github.com/canaanyjn/flarness/internal/config"
 	"github.com/canaanyjn/flarness/internal/daemon"
+	"github.com/canaanyjn/flarness/internal/instance"
 	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/canaanyjn/flarness/internal/platform"
@@ -27,16 +28,10 @@ var startCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg := config.Load()
 
-		// Resolve project path.
-		project := startProject
-		if project == "" {
-			var err error
-			project, err = os.Getwd()
-			if err != nil {
-				printError("cannot determine project path: " + err.Error())
-			}
+		project, projectCfg, err := resolveProjectArg(cfg, startProject)
+		if err != nil {
+			printError(err.Error())
 		}
-		project, _ = filepath.Abs(project)
 
 		// Validate: must contain pubspec.yaml.
 		if _, err := os.Stat(filepath.Join(project, "pubspec.yaml")); os.IsNotExist(err) {
@@ -45,17 +40,29 @@ var startCmd = &cobra.Command{
 
 		device := startDevice
 		if device == "" {
-			device = platform.PickDefaultDevice()
+			if projectCfg.Device != "" {
+				device = projectCfg.Device
+			} else {
+				device = platform.PickDefaultDevice()
+			}
 		}
 
 		extraArgs, err := cliargs.NormalizeExtraArgs(startExtraArgs)
 		if err != nil {
 			printError("invalid --extra-args: " + err.Error())
 		}
-		extraArgs = append(append([]string{}, cfg.Defaults.ExtraArgs...), extraArgs...)
+		mergedExtraArgs := append([]string{}, cfg.Defaults.ExtraArgs...)
+		mergedExtraArgs = append(mergedExtraArgs, projectCfg.ExtraArgs...)
+		mergedExtraArgs = append(mergedExtraArgs, extraArgs...)
 		flutterCommand := append([]string{}, cfg.Defaults.FlutterCommand...)
+		if len(projectCfg.FlutterCommand) > 0 {
+			flutterCommand = append([]string{}, projectCfg.FlutterCommand...)
+		}
 
-		client := ipc.NewClient()
+		session := instance.SessionForProject(project)
+		client := ipc.NewClient(session)
+		d := daemon.New(session)
+
 		if client.IsRunning() {
 			resp, err := client.Send(model.Command{Cmd: "status"})
 			if err != nil {
@@ -75,6 +82,7 @@ var startCmd = &cobra.Command{
 			if runningProject == project && runningDevice == device {
 				printJSON(map[string]any{
 					"status":        "ok",
+					"session":       session,
 					"device":        device,
 					"project":       project,
 					"message":       "daemon reused",
@@ -86,18 +94,31 @@ var startCmd = &cobra.Command{
 			}
 
 			printError(fmt.Sprintf(
-				"daemon already running for project=%s device=%s; stop it before starting project=%s device=%s",
-				runningProject, runningDevice, project, device,
+				"session %s is already running for project=%s device=%s; stop it before starting project=%s device=%s",
+				session, runningProject, runningDevice, project, device,
 			))
 		}
 
-		d := daemon.New()
-		if err := d.Start(project, device, extraArgs, flutterCommand, false); err != nil {
+		if !d.IsRunning() {
+			_ = instance.CleanupAll(session)
+		}
+
+		if meta, err := instance.LoadMeta(session); err == nil {
+			if meta.ProjectPath != project || meta.Device != device {
+				printError(fmt.Sprintf(
+					"session %s metadata mismatch (project=%s device=%s); clean the stale instance before starting project=%s device=%s",
+					session, meta.ProjectPath, meta.Device, project, device,
+				))
+			}
+		}
+
+		if err := d.Start(project, device, mergedExtraArgs, flutterCommand, false); err != nil {
 			printError(err.Error())
 		}
 
 		printJSON(map[string]any{
 			"status":  "ok",
+			"session": session,
 			"device":  device,
 			"project": project,
 			"message": "daemon started",
@@ -107,7 +128,7 @@ var startCmd = &cobra.Command{
 }
 
 func init() {
-	startCmd.Flags().StringVarP(&startProject, "project", "p", "", "path to Flutter project (default: current directory)")
+	startCmd.Flags().StringVarP(&startProject, "project", "p", "", "path to Flutter project or configured project name (default: current directory)")
 	startCmd.Flags().StringVarP(&startDevice, "device", "d", "", "target device (default: auto-detect)")
 	startCmd.Flags().StringArrayVar(&startExtraArgs, "extra-args", nil, "extra arguments for flutter run; accepts repeated flags or a single JSON array string")
 	rootCmd.AddCommand(startCmd)

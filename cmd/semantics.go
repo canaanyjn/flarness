@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/spf13/cobra"
 )
@@ -24,11 +23,7 @@ widget tree or render tree.
 Examples:
   flarness semantics`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		client := ipc.NewClient()
-		if !client.IsRunning() {
-			printError("daemon is not running — run 'flarness start' first")
-			return nil
-		}
+		client, _ := sessionClient(cmd)
 
 		resp, err := client.Send(model.Command{
 			Cmd:  "semantics",
@@ -49,5 +44,6 @@ Examples:
 }
 
 func init() {
+	addSessionFlag(semanticsCmd)
 	rootCmd.AddCommand(semanticsCmd)
 }

@@ -12,7 +12,8 @@ var stopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the Flarness daemon",
 	Run: func(cmd *cobra.Command, args []string) {
-		client := ipc.NewClient()
+		session := requireSession(cmd)
+		client := ipc.NewClient(session)
 		if client.IsRunning() {
 			resp, err := client.Send(model.Command{Cmd: "stop"})
 			if err != nil {
@@ -21,12 +22,13 @@ var stopCmd = &cobra.Command{
 			if !resp.OK {
 				printError(resp.Error)
 			}
-			d := daemon.New()
+			d := daemon.New(session)
 			deadline := time.Now().Add(3 * time.Second)
 			for time.Now().Before(deadline) {
 				if !d.IsRunning() {
 					printJSON(map[string]any{
 						"status":  "ok",
+						"session": session,
 						"message": "daemon stopped",
 					})
 					return
@@ -40,14 +42,16 @@ var stopCmd = &cobra.Command{
 			}
 			printJSON(map[string]any{
 				"status":  "ok",
+				"session": session,
 				"message": "daemon stopped",
 			})
 			return
 		}
 
-		d := daemon.New()
+		d := daemon.New(session)
 		if !d.IsRunning() {
-			printError("daemon is not running")
+			d.Cleanup()
+			printError(daemonNotRunningError(session))
 		}
 		if err := d.Stop(); err != nil {
 			printError("failed to stop daemon: " + err.Error())
@@ -55,11 +59,13 @@ var stopCmd = &cobra.Command{
 
 		printJSON(map[string]any{
 			"status":  "ok",
+			"session": session,
 			"message": "daemon stopped",
 		})
 	},
 }
 
 func init() {
+	addSessionFlag(stopCmd)
 	rootCmd.AddCommand(stopCmd)
 }

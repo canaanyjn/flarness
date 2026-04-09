@@ -3,11 +3,11 @@ package ipc
 import (
 	"encoding/json"
 	"net"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/canaanyjn/flarness/internal/instance"
 	"github.com/canaanyjn/flarness/internal/model"
 )
 
@@ -42,7 +42,7 @@ func TestClientSendReceive(t *testing.T) {
 	}()
 
 	// Use client to send.
-	client := &Client{socketPath: sockPath}
+	client := &Client{session: "test", socketPath: sockPath}
 	resp, err := client.Send(model.Command{Cmd: "test"})
 	if err != nil {
 		t.Fatalf("send error: %v", err)
@@ -54,39 +54,25 @@ func TestClientSendReceive(t *testing.T) {
 }
 
 func TestClientNotRunning(t *testing.T) {
-	client := &Client{socketPath: filepath.Join(t.TempDir(), "nonexistent.sock")}
+	client := &Client{session: "test", socketPath: filepath.Join(t.TempDir(), "nonexistent.sock")}
 	if client.IsRunning() {
 		t.Error("expected IsRunning=false for nonexistent socket")
 	}
 }
 
 func TestClientSendNoServer(t *testing.T) {
-	client := &Client{socketPath: filepath.Join(t.TempDir(), "nonexistent.sock")}
+	client := &Client{session: "test", socketPath: filepath.Join(t.TempDir(), "nonexistent.sock")}
 	_, err := client.Send(model.Command{Cmd: "test"})
 	if err == nil {
 		t.Error("expected error when no server is running")
 	}
 }
 
-func TestSocketPath(t *testing.T) {
-	path := SocketPath()
-	if path == "" {
-		t.Fatal("SocketPath should not be empty")
-	}
-
-	home, _ := os.UserHomeDir()
-	expected := filepath.Join(home, ".flarness", "daemon.sock")
-	if path != expected {
-		t.Errorf("SocketPath: got %q, want %q", path, expected)
-	}
-}
-
-func TestPIDPath(t *testing.T) {
-	path := PIDPath()
-	home, _ := os.UserHomeDir()
-	expected := filepath.Join(home, ".flarness", "daemon.pid")
-	if path != expected {
-		t.Errorf("PIDPath: got %q, want %q", path, expected)
+func TestNewClientUsesSessionPaths(t *testing.T) {
+	client := NewClient("abc12345")
+	paths := instance.PathsForSession("abc12345")
+	if client.socketPath != paths.SocketPath {
+		t.Errorf("socketPath = %q, want %q", client.socketPath, paths.SocketPath)
 	}
 }
 
@@ -113,7 +99,7 @@ func TestClientIsRunningWithServer(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	client := &Client{socketPath: sockPath}
+	client := &Client{session: "test", socketPath: sockPath}
 	if !client.IsRunning() {
 		t.Error("expected IsRunning=true when server is listening")
 	}

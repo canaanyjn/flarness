@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/spf13/cobra"
 )
@@ -16,10 +15,7 @@ For other platforms: uses flutter screenshot command.
 
 The screenshot is saved to ~/.flarness/screenshots/ by default.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := ipc.NewClient()
-		if !client.IsRunning() {
-			printError("daemon is not running — run 'flarness start' first")
-		}
+		client, _ := sessionClient(cmd)
 
 		resp, err := client.Send(model.Command{Cmd: "screenshot"})
 		if err != nil {
@@ -35,5 +31,6 @@ The screenshot is saved to ~/.flarness/screenshots/ by default.`,
 }
 
 func init() {
+	addSessionFlag(screenshotCmd)
 	rootCmd.AddCommand(screenshotCmd)
 }

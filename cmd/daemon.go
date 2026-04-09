@@ -12,6 +12,7 @@ var daemonCmd = &cobra.Command{
 	Short:  "Internal: run as foreground daemon",
 	Hidden: true,
 	Run: func(cmd *cobra.Command, args []string) {
+		session, _ := cmd.Flags().GetString("session")
 		project, _ := cmd.Flags().GetString("project")
 		device, _ := cmd.Flags().GetString("device")
 		rawExtraArgs, _ := cmd.Flags().GetStringArray("extra-args")
@@ -30,7 +31,7 @@ var daemonCmd = &cobra.Command{
 			}
 		}
 
-		d := daemon.New()
+		d := daemon.New(session)
 		if err := d.Start(project, device, extraArgs, flutterCommand, true); err != nil {
 			printError(err.Error())
 		}
@@ -38,6 +39,7 @@ var daemonCmd = &cobra.Command{
 }
 
 func init() {
+	daemonCmd.Flags().String("session", "", "session id")
 	daemonCmd.Flags().String("project", "", "project path")
 	daemonCmd.Flags().String("device", "chrome", "target device")
 	daemonCmd.Flags().StringArray("extra-args", nil, "extra flutter run arguments")

@@ -6,18 +6,20 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"github.com/canaanyjn/flarness/internal/instance"
 )
 
-func TestFnvHash(t *testing.T) {
+func TestSessionForProject(t *testing.T) {
 	// Same input should produce the same hash.
-	h1 := fnvHash("/Users/canaanyjn/WorkSpace/Programming/Tools/FlutterHarness")
-	h2 := fnvHash("/Users/canaanyjn/WorkSpace/Programming/Tools/FlutterHarness")
+	h1 := instance.SessionForProject("/Users/canaanyjn/WorkSpace/Programming/Tools/FlutterHarness")
+	h2 := instance.SessionForProject("/Users/canaanyjn/WorkSpace/Programming/Tools/FlutterHarness")
 	if h1 != h2 {
 		t.Errorf("same input produced different hashes: %s vs %s", h1, h2)
 	}
 
 	// Different input should produce different hashes.
-	h3 := fnvHash("/Users/canaanyjn/other-project")
+	h3 := instance.SessionForProject("/Users/canaanyjn/other-project")
 	if h1 == h3 {
 		t.Errorf("different inputs produced the same hash: %s", h1)
 	}
@@ -31,6 +33,7 @@ func TestFnvHash(t *testing.T) {
 func TestPIDFileRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	d := &Daemon{
+		session:    "abc12345",
 		baseDir:    tmpDir,
 		pidPath:    filepath.Join(tmpDir, "daemon.pid"),
 		socketPath: filepath.Join(tmpDir, "daemon.sock"),
@@ -82,6 +85,7 @@ func TestIsRunningNoPID(t *testing.T) {
 func TestLogDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	d := &Daemon{
+		session: "abc12345",
 		baseDir: tmpDir,
 		project: "/Users/canaanyjn/my-flutter-project",
 	}
@@ -93,17 +97,18 @@ func TestLogDir(t *testing.T) {
 	if !filepath.IsAbs(logDir) {
 		t.Errorf("LogDir should be absolute: %s", logDir)
 	}
-	// Should be under baseDir/logs/.
-	expected := filepath.Join(tmpDir, "logs")
-	if !hasPrefix(logDir, expected) {
-		t.Errorf("LogDir should be under %s, got %s", expected, logDir)
+	expected := instance.PathsForSession("abc12345").LogsDir
+	if logDir != expected {
+		t.Errorf("LogDir should be %s, got %s", expected, logDir)
 	}
 }
 
 func TestWriteProjectMeta(t *testing.T) {
-	tmpDir := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	d := &Daemon{
-		baseDir: tmpDir,
+		session: "abc12345",
+		baseDir: instance.PathsForSession("abc12345").InstanceDir,
 		project: "/Users/canaanyjn/my-flutter-project",
 		device:  "chrome",
 	}
@@ -112,7 +117,7 @@ func TestWriteProjectMeta(t *testing.T) {
 		t.Fatalf("WriteProjectMeta error: %v", err)
 	}
 
-	metaPath := filepath.Join(d.LogDir(), "meta.json")
+	metaPath := instance.PathsForSession("abc12345").MetaPath
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		t.Fatalf("cannot read meta.json: %v", err)
@@ -129,6 +134,7 @@ func TestWriteProjectMeta(t *testing.T) {
 
 func TestStatus(t *testing.T) {
 	d := &Daemon{
+		session: "abc12345",
 		project: "/test/project",
 		device:  "chrome",
 	}
@@ -140,6 +146,9 @@ func TestStatus(t *testing.T) {
 	}
 	if status["device"] != "chrome" {
 		t.Errorf("device: got %v, want chrome", status["device"])
+	}
+	if status["session"] != "abc12345" {
+		t.Errorf("session: got %v, want abc12345", status["session"])
 	}
 	if status["running"] != true {
 		t.Errorf("running: got %v, want true", status["running"])
@@ -165,10 +174,6 @@ func TestProcessExists(t *testing.T) {
 	if processExists(cmd.Process) {
 		t.Fatal("expected helper process to be gone")
 	}
-}
-
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
 func stringContains(s, sub string) bool {

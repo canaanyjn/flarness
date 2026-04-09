@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/spf13/cobra"
 )
@@ -25,10 +24,7 @@ composed.
 Use semantics instead when you need automation-facing data such as labels,
 actions, focus, and bounding rectangles.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client := ipc.NewClient()
-		if !client.IsRunning() {
-			printError("daemon is not running — run 'flarness start' first")
-		}
+		client, _ := sessionClient(cmd)
 
 		cmdArgs := map[string]any{}
 		if inspectMaxDepth > 0 {
@@ -52,6 +48,7 @@ actions, focus, and bounding rectangles.`,
 }
 
 func init() {
+	addSessionFlag(inspectCmd)
 	inspectCmd.Flags().IntVar(&inspectMaxDepth, "max-depth", 0, "max depth of the widget tree (0 = unlimited)")
 	rootCmd.AddCommand(inspectCmd)
 }

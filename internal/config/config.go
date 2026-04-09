@@ -9,9 +9,10 @@ import (
 
 // Config holds the global Flarness configuration.
 type Config struct {
-	Log      LogConfig     `yaml:"log"`
-	Defaults DefaultConfig `yaml:"defaults"`
-	CDP      CDPConfig     `yaml:"cdp"`
+	Log      LogConfig                `yaml:"log"`
+	Defaults DefaultConfig            `yaml:"defaults"`
+	CDP      CDPConfig                `yaml:"cdp"`
+	Projects map[string]ProjectConfig `yaml:"projects"`
 }
 
 // LogConfig holds log-related settings.
@@ -26,6 +27,14 @@ type DefaultConfig struct {
 	Device         string   `yaml:"device"` // default: "chrome"
 	ExtraArgs      []string `yaml:"extra_args"`
 	FlutterCommand []string `yaml:"flutter_command"`
+}
+
+// ProjectConfig holds a named project shortcut.
+type ProjectConfig struct {
+	Path           string   `yaml:"path"`
+	Device         string   `yaml:"device,omitempty"`
+	ExtraArgs      []string `yaml:"extra_args,omitempty"`
+	FlutterCommand []string `yaml:"flutter_command,omitempty"`
 }
 
 // CDPConfig holds CDP bridge settings.
@@ -49,6 +58,7 @@ func Default() Config {
 			Enabled: true,
 			Timeout: "10s",
 		},
+		Projects: map[string]ProjectConfig{},
 	}
 }
 
@@ -69,6 +79,9 @@ func Load() Config {
 	}
 
 	yaml.Unmarshal(data, &cfg)
+	if cfg.Projects == nil {
+		cfg.Projects = map[string]ProjectConfig{}
+	}
 	return cfg
 }
 
@@ -91,4 +104,10 @@ func Save(cfg Config) error {
 
 	path := filepath.Join(dir, "config.yaml")
 	return os.WriteFile(path, data, 0644)
+}
+
+// LookupProject returns a named project config.
+func (c Config) LookupProject(name string) (ProjectConfig, bool) {
+	project, ok := c.Projects[name]
+	return project, ok
 }

@@ -30,6 +30,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.CDP.Timeout != "10s" {
 		t.Errorf("cdp.timeout: got %q, want 10s", cfg.CDP.Timeout)
 	}
+	if len(cfg.Projects) != 0 {
+		t.Errorf("projects: got %#v, want empty map", cfg.Projects)
+	}
 }
 
 func TestSaveAndLoad(t *testing.T) {
@@ -43,6 +46,10 @@ func TestSaveAndLoad(t *testing.T) {
 	cfg.Defaults.Device = "macOS"
 	cfg.Defaults.FlutterCommand = []string{"./scripts/dev.sh"}
 	cfg.Log.BufferSize = 2000
+	cfg.Projects["p2-mobile"] = ProjectConfig{
+		Path:   "/tmp/p2/apps/mobile",
+		Device: "macos",
+	}
 
 	if err := Save(cfg); err != nil {
 		t.Fatalf("Save error: %v", err)
@@ -65,6 +72,16 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.Log.BufferSize != 2000 {
 		t.Errorf("buffer_size: got %d, want 2000", loaded.Log.BufferSize)
 	}
+	project, ok := loaded.LookupProject("p2-mobile")
+	if !ok {
+		t.Fatal("expected project alias p2-mobile to exist")
+	}
+	if project.Path != "/tmp/p2/apps/mobile" {
+		t.Errorf("project path: got %q, want /tmp/p2/apps/mobile", project.Path)
+	}
+	if project.Device != "macos" {
+		t.Errorf("project device: got %q, want macos", project.Device)
+	}
 }
 
 func TestLoadNonExistent(t *testing.T) {
@@ -77,5 +94,8 @@ func TestLoadNonExistent(t *testing.T) {
 	cfg := Load()
 	if cfg.Defaults.Device != "chrome" {
 		t.Errorf("should return default device, got %q", cfg.Defaults.Device)
+	}
+	if len(cfg.Projects) != 0 {
+		t.Errorf("should return empty projects, got %#v", cfg.Projects)
 	}
 }

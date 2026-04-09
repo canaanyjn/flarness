@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/canaanyjn/flarness/internal/cdp"
 	"github.com/canaanyjn/flarness/internal/collector"
+	"github.com/canaanyjn/flarness/internal/instance"
 	"github.com/canaanyjn/flarness/internal/model"
 	"github.com/canaanyjn/flarness/internal/nativebridge"
 	"github.com/canaanyjn/flarness/internal/parser"
@@ -22,6 +22,7 @@ import (
 
 // Daemon manages the lifecycle of the Flarness background process.
 type Daemon struct {
+	session    string
 	baseDir    string
 	pidPath    string
 	socketPath string
@@ -50,20 +51,20 @@ type Daemon struct {
 }
 
 // New creates a new Daemon instance.
-func New() *Daemon {
-	home, _ := os.UserHomeDir()
-	base := filepath.Join(home, ".flarness")
+func New(session string) *Daemon {
+	paths := instance.PathsForSession(session)
 	return &Daemon{
-		baseDir:    base,
-		pidPath:    filepath.Join(base, "daemon.pid"),
-		socketPath: filepath.Join(base, "daemon.sock"),
+		session:    session,
+		baseDir:    paths.InstanceDir,
+		pidPath:    paths.PIDPath,
+		socketPath: paths.SocketPath,
 	}
 }
 
 // Start launches the daemon as a background process.
 // If foreground is true, runs in the current process (used by the spawned daemon itself).
 func (d *Daemon) Start(project, device string, extraArgs []string, flutterCommand []string, foreground bool) error {
-	// Ensure base directory exists.
+	// Ensure instance directory exists.
 	if err := os.MkdirAll(d.baseDir, 0755); err != nil {
 		return fmt.Errorf("cannot create directory %s: %w", d.baseDir, err)
 	}
@@ -93,6 +94,7 @@ func (d *Daemon) spawnBackground(project, device string, extraArgs []string, flu
 	}
 
 	args := []string{"_daemon",
+		"--session", d.session,
 		"--project", project,
 		"--device", device,
 	}
@@ -109,7 +111,7 @@ func (d *Daemon) spawnBackground(project, device string, extraArgs []string, flu
 	}
 
 	// Redirect stdout/stderr to log file for debugging.
-	logFile, err := os.Create(filepath.Join(d.baseDir, "daemon.log"))
+	logFile, err := os.Create(instance.PathsForSession(d.session).DaemonLogPath)
 	if err == nil {
 		cmd.Stdout = logFile
 		cmd.Stderr = logFile
@@ -365,8 +367,11 @@ func (d *Daemon) Cleanup() {
 	if d.logcatBridge != nil {
 		d.logcatBridge.Stop()
 	}
-	os.Remove(d.pidPath)
-	os.Remove(d.socketPath)
+	_ = os.Remove(d.pidPath)
+	_ = os.Remove(d.socketPath)
+	if d.session != "" {
+		_ = instance.Cleanup(d.session)
+	}
 }
 
 // IsRunning checks if the daemon is currently running.
@@ -401,6 +406,7 @@ func (d *Daemon) ReadPID() (int, error) {
 // Status returns the current daemon status.
 func (d *Daemon) Status() map[string]any {
 	status := map[string]any{
+		"session": d.session,
 		"running": d.project != "",
 		"pid":     os.Getpid(),
 		"device":  d.device,
@@ -426,46 +432,19 @@ func (d *Daemon) Status() map[string]any {
 	return status
 }
 
-// ProjectMeta holds project metadata for storage.
-type ProjectMeta struct {
-	ProjectPath string `json:"project_path"`
-	ProjectName string `json:"project_name"`
-	Device      string `json:"device"`
-	CreatedAt   string `json:"created_at"`
-}
-
 // WriteProjectMeta writes project metadata to the log directory.
 func (d *Daemon) WriteProjectMeta() error {
-	meta := ProjectMeta{
+	meta := instance.Meta{
+		Session:     d.session,
 		ProjectPath: d.project,
 		ProjectName: filepath.Base(d.project),
 		Device:      d.device,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return err
-	}
-	metaDir := d.LogDir()
-	if err := os.MkdirAll(metaDir, 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(metaDir, "meta.json"), data, 0644)
+	return instance.SaveMeta(meta)
 }
 
 // LogDir returns the project-specific log directory.
 func (d *Daemon) LogDir() string {
-	// Use a simple hash of the project path for directory naming.
-	h := fnvHash(d.project)
-	return filepath.Join(d.baseDir, "logs", h)
-}
-
-// fnvHash returns an 8-char hex hash of a string (FNV-1a).
-func fnvHash(s string) string {
-	var h uint32 = 2166136261
-	for i := 0; i < len(s); i++ {
-		h ^= uint32(s[i])
-		h *= 16777619
-	}
-	return fmt.Sprintf("%08x", h)
+	return instance.PathsForSession(d.session).LogsDir
 }
