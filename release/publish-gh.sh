@@ -76,12 +76,12 @@ else
   notes_args=(--generate-notes)
 fi
 
-repo_args=()
+repo_args=("")
 if [[ -n "${GH_REPO:-}" ]]; then
   repo_args=(--repo "$GH_REPO")
 fi
 
-release_flags=()
+release_flags=("")
 case "${RELEASE_PRERELEASE:-}" in
   1|true|TRUE|yes|YES)
     release_flags+=(--prerelease)
@@ -89,8 +89,8 @@ case "${RELEASE_PRERELEASE:-}" in
 esac
 
 gh release create "$VERSION" \
-  "${repo_args[@]}" \
-  "${release_flags[@]}" \
+  "${repo_args[@]:1}" \
+  "${release_flags[@]:1}" \
   "${notes_args[@]}" \
   "${assets[@]}"
 

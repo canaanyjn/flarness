@@ -81,13 +81,16 @@ checksum_path="$TMP_DIR/$CHECKSUM_FILE"
 curl -fL "$archive_url" -o "$archive_path"
 if [[ ${#checksum_cmd[@]} -gt 0 ]]; then
   curl -fL "$checksum_url" -o "$checksum_path"
-  (
-    cd "$TMP_DIR"
-    "${checksum_cmd[@]}" -c "$CHECKSUM_FILE" 2>/dev/null | grep -F "$archive_name: OK" >/dev/null
-  ) || {
+  expected_checksum="$(awk -v name="./$archive_name" '$2 == name { print $1 }' "$checksum_path")"
+  if [[ -z "$expected_checksum" ]]; then
+    echo "checksum entry not found for $archive_name" >&2
+    exit 1
+  fi
+  actual_checksum="$("${checksum_cmd[@]}" "$archive_path" | awk '{print $1}')"
+  if [[ "$actual_checksum" != "$expected_checksum" ]]; then
     echo "checksum verification failed for $archive_name" >&2
     exit 1
-  }
+  fi
 fi
 tar -xzf "$archive_path" -C "$TMP_DIR"
 
