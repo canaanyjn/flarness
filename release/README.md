@@ -55,6 +55,13 @@ Environment variables:
 - `RELEASE_VERSION`: override the version/tag to publish
 - `RELEASE_NOTES_FILE`: optional path to release notes text/markdown
 - `GH_REPO`: optional `owner/repo` override
+- `RELEASE_PRERELEASE`: set to `1`/`true` to mark the GitHub release as prerelease
+
+Note:
+
+- `publish-gh.sh` now refuses to publish an inferred `git describe` value like
+  `v0.1.0-8-g<sha>` unless you explicitly set `RELEASE_VERSION`. This prevents
+  accidental GitHub releases from untagged commits.
 
 ## Install a published release
 
@@ -70,9 +77,15 @@ Install a specific release tag into a custom directory:
 RELEASE_VERSION=v0.1.0 INSTALL_DIR="$HOME/.local/bin" ./release/install.sh
 ```
 
+`install.sh` downloads the archive and `checksums.txt` from the GitHub release
+and verifies the SHA-256 checksum before installing when `shasum` or
+`sha256sum` is available.
+
 ## Typical flow
 
 ```bash
+git tag v0.1.1
+git push origin v0.1.1
 ./release/build.sh darwin/amd64 darwin/arm64 linux/amd64 linux/arm64
 ./release/publish-gh.sh
 ```

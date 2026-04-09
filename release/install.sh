@@ -6,6 +6,7 @@ REPO="${GH_REPO:-canaanyjn/flarness}"
 VERSION="${RELEASE_VERSION:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 TMP_DIR="$(mktemp -d)"
+CHECKSUM_FILE="checksums.txt"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -51,6 +52,14 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+if command -v shasum >/dev/null 2>&1; then
+  checksum_cmd=(shasum -a 256)
+elif command -v sha256sum >/dev/null 2>&1; then
+  checksum_cmd=(sha256sum)
+else
+  checksum_cmd=()
+fi
+
 asset_name="${APP_NAME}"
 archive_name="${APP_NAME}_${VERSION}_${goos}_${goarch}.tar.gz"
 
@@ -66,8 +75,20 @@ fi
 
 archive_url="https://github.com/$REPO/releases/download/$VERSION/$archive_name"
 archive_path="$TMP_DIR/$archive_name"
+checksum_url="https://github.com/$REPO/releases/download/$VERSION/$CHECKSUM_FILE"
+checksum_path="$TMP_DIR/$CHECKSUM_FILE"
 
 curl -fL "$archive_url" -o "$archive_path"
+if [[ ${#checksum_cmd[@]} -gt 0 ]]; then
+  curl -fL "$checksum_url" -o "$checksum_path"
+  (
+    cd "$TMP_DIR"
+    "${checksum_cmd[@]}" -c "$CHECKSUM_FILE" 2>/dev/null | grep -F "$archive_name: OK" >/dev/null
+  ) || {
+    echo "checksum verification failed for $archive_name" >&2
+    exit 1
+  }
+fi
 tar -xzf "$archive_path" -C "$TMP_DIR"
 
 binary_path="$TMP_DIR/${APP_NAME}_${VERSION}_${goos}_${goarch}/$asset_name"

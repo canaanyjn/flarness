@@ -19,6 +19,7 @@ Environment:
   RELEASE_VERSION    Override the release version/tag to publish.
   RELEASE_NOTES_FILE Optional path to release notes text/markdown.
   GH_REPO            Optional owner/repo override.
+  RELEASE_PRERELEASE Set to 1/true to mark the release as prerelease.
 EOF
 }
 
@@ -33,6 +34,12 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 gh auth status >/dev/null
+
+if [[ -z "${RELEASE_VERSION:-}" && "$VERSION" == *"-g"* ]]; then
+  echo "refusing to publish release with inferred non-tag version: $VERSION" >&2
+  echo "set RELEASE_VERSION to an explicit tag (for example v0.1.1) or create and checkout the tag first" >&2
+  exit 1
+fi
 
 if [[ ! -d "$DIST_DIR" ]]; then
   echo "release artifacts not found: $DIST_DIR" >&2
@@ -74,8 +81,16 @@ if [[ -n "${GH_REPO:-}" ]]; then
   repo_args=(--repo "$GH_REPO")
 fi
 
+release_flags=()
+case "${RELEASE_PRERELEASE:-}" in
+  1|true|TRUE|yes|YES)
+    release_flags+=(--prerelease)
+    ;;
+esac
+
 gh release create "$VERSION" \
   "${repo_args[@]}" \
+  "${release_flags[@]}" \
   "${notes_args[@]}" \
   "${assets[@]}"
 
