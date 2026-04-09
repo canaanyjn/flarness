@@ -168,8 +168,7 @@ func (d *Daemon) runForeground(project, device string, extraArgs []string, flutt
 	// Initialize and start the Flutter process.
 	d.procMgr = process.New(project, device, flutterCommand, d.onProcessEvent)
 	if err := d.procMgr.Start(extraArgs); err != nil {
-		fmt.Fprintf(os.Stderr, "[flarness] warning: flutter process failed to start: %v\n", err)
-		// Continue without flutter — daemon still serves IPC for status/stop.
+		return fmt.Errorf("flutter process failed to start: %w", err)
 	}
 	if platform.IsAndroid(device) && d.collector != nil {
 		d.logcatBridge = nativebridge.NewLogcatBridge(device, d.OnLog)

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/canaanyjn/flarness/internal/cliargs"
 	"github.com/canaanyjn/flarness/internal/config"
@@ -19,6 +21,12 @@ var (
 	startProject   string
 	startDevice    string
 	startExtraArgs []string
+)
+
+const (
+	daemonReadyTimeout  = 10 * time.Second
+	flutterReadyTimeout = 90 * time.Second
+	startPollInterval   = 250 * time.Millisecond
 )
 
 var startCmd = &cobra.Command{
@@ -79,18 +87,32 @@ var startCmd = &cobra.Command{
 
 			runningProject, _ := status["project"].(string)
 			runningDevice, _ := status["device"].(string)
+			flutterState, _ := status["flutter_state"].(string)
 			if runningProject == project && runningDevice == device {
-				printJSON(map[string]any{
-					"status":        "ok",
-					"session":       session,
-					"device":        device,
-					"project":       project,
-					"message":       "daemon reused",
-					"reused":        true,
-					"flutter_state": status["flutter_state"],
-					"url":           status["url"],
-				})
-				return
+				if flutterState != "running" {
+					switch flutterState {
+					case "starting", "reloading":
+						printError(fmt.Sprintf("session %s is already %s for project=%s device=%s", session, flutterState, project, device))
+					default:
+						if err := d.Stop(); err != nil && d.IsRunning() {
+							printError("failed to recover unhealthy session: " + err.Error())
+						}
+						_ = instance.CleanupAll(session)
+						break
+					}
+				} else {
+					printJSON(map[string]any{
+						"status":        "ok",
+						"session":       session,
+						"device":        device,
+						"project":       project,
+						"message":       "daemon reused",
+						"reused":        true,
+						"flutter_state": status["flutter_state"],
+						"url":           status["url"],
+					})
+					return
+				}
 			}
 
 			printError(fmt.Sprintf(
@@ -116,13 +138,21 @@ var startCmd = &cobra.Command{
 			printError(err.Error())
 		}
 
+		status, err := waitForStartedSession(d, client)
+		if err != nil {
+			_ = d.Stop()
+			printError(err.Error())
+		}
+
 		printJSON(map[string]any{
-			"status":  "ok",
-			"session": session,
-			"device":  device,
-			"project": project,
-			"message": "daemon started",
-			"reused":  false,
+			"status":        "ok",
+			"session":       session,
+			"device":        device,
+			"project":       project,
+			"message":       "daemon started",
+			"reused":        false,
+			"flutter_state": status["flutter_state"],
+			"url":           status["url"],
 		})
 	},
 }
@@ -132,4 +162,80 @@ func init() {
 	startCmd.Flags().StringVarP(&startDevice, "device", "d", "", "target device (default: auto-detect)")
 	startCmd.Flags().StringArrayVar(&startExtraArgs, "extra-args", nil, "extra arguments for flutter run; accepts repeated flags or a single JSON array string")
 	rootCmd.AddCommand(startCmd)
+}
+
+func waitForStartedSession(d *daemon.Daemon, client *ipc.Client) (map[string]any, error) {
+	socketDeadline := time.Now().Add(daemonReadyTimeout)
+	for time.Now().Before(socketDeadline) {
+		if client.IsRunning() {
+			break
+		}
+		if !d.IsRunning() {
+			return nil, fmt.Errorf("daemon for session %s exited before opening IPC; %s", client.Session(), daemonFailureHint(client.Session()))
+		}
+		time.Sleep(startPollInterval)
+	}
+	if !client.IsRunning() {
+		return nil, fmt.Errorf("daemon for session %s did not open IPC within %s; %s", client.Session(), daemonReadyTimeout, daemonFailureHint(client.Session()))
+	}
+
+	flutterDeadline := time.Now().Add(flutterReadyTimeout)
+	for time.Now().Before(flutterDeadline) {
+		resp, err := client.Send(model.Command{Cmd: "status"})
+		if err != nil {
+			if !d.IsRunning() {
+				return nil, fmt.Errorf("daemon for session %s exited during startup; %s", client.Session(), daemonFailureHint(client.Session()))
+			}
+			time.Sleep(startPollInterval)
+			continue
+		}
+		if !resp.OK {
+			return nil, fmt.Errorf("startup status check failed for session %s: %s", client.Session(), resp.Error)
+		}
+
+		status, ok := resp.Data.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid startup status response for session %s", client.Session())
+		}
+
+		state, _ := status["flutter_state"].(string)
+		switch state {
+		case "running":
+			return status, nil
+		case "stopped":
+			return nil, fmt.Errorf("flutter process for session %s stopped during startup; %s", client.Session(), daemonFailureHint(client.Session()))
+		case "idle", "":
+			if !d.IsRunning() {
+				return nil, fmt.Errorf("daemon for session %s exited during startup; %s", client.Session(), daemonFailureHint(client.Session()))
+			}
+		}
+
+		time.Sleep(startPollInterval)
+	}
+
+	return nil, fmt.Errorf("flutter process for session %s did not become ready within %s; %s", client.Session(), flutterReadyTimeout, daemonFailureHint(client.Session()))
+}
+
+func daemonFailureHint(session string) string {
+	paths := instance.PathsForSession(session)
+	logTail := tailFile(paths.DaemonLogPath, 20)
+	if logTail == "" {
+		return fmt.Sprintf("check %s", paths.DaemonLogPath)
+	}
+	return fmt.Sprintf("recent daemon log from %s:\n%s", paths.DaemonLogPath, logTail)
+}
+
+func tailFile(path string, maxLines int) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	return strings.Join(lines, "\n")
 }
