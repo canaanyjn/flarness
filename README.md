@@ -35,6 +35,23 @@ make build
 sudo make install
 ```
 
+## Skill Install
+
+This repo also exposes a Codex-compatible skill at [`skills/flarness`](/Users/tcn/WorkSpace/Programming/Tools/flarness/skills/flarness/SKILL.md).
+
+With [`vercel-labs/skills`](https://github.com/vercel-labs/skills), install it from the repo directly:
+
+```bash
+npx skills add canaanyjn/flarness --skill flarness
+```
+
+After that, the installed skill can guide an agent through the Flarness workflow without needing the subdirectory URL.
+
+Note:
+
+- `skills/flarness/` is the canonical install path for external skill installers.
+- `skill-flarness/` is kept as a compatibility copy for existing local references.
+
 ## 🛠 Usage
 
 All commands return a JSON object with a `status` field.
