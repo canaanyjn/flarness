@@ -5,6 +5,7 @@ APP_NAME="flarness"
 REPO="${GH_REPO:-canaanyjn/flarness}"
 VERSION="${RELEASE_VERSION:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+FALLBACK_INSTALL_DIR="${HOME}/.local/bin"
 TMP_DIR="$(mktemp -d)"
 CHECKSUM_FILE="checksums.txt"
 
@@ -101,6 +102,17 @@ if [[ ! -f "$binary_path" ]]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
-install "$binary_path" "$INSTALL_DIR/$APP_NAME"
+target_path="$INSTALL_DIR/$APP_NAME"
+if ! install "$binary_path" "$target_path" 2>/dev/null; then
+  if [[ "${INSTALL_DIR}" == "/usr/local/bin" ]]; then
+    INSTALL_DIR="$FALLBACK_INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+    target_path="$INSTALL_DIR/$APP_NAME"
+    install "$binary_path" "$target_path"
+  else
+    echo "failed to install $APP_NAME to $INSTALL_DIR" >&2
+    exit 1
+  fi
+fi
 
-echo "Installed $APP_NAME $VERSION to $INSTALL_DIR/$APP_NAME"
+echo "Installed $APP_NAME $VERSION to $target_path"
