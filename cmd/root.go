@@ -36,7 +36,7 @@ func SetVersion(v string) {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "enable verbose output")
 }
 
 // printJSON marshals v to JSON and prints to stdout.

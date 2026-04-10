@@ -14,6 +14,41 @@ cleanup() {
 }
 trap cleanup EXIT
 
+ensure_path_persisted() {
+  local bin_dir="$1"
+  case ":$PATH:" in
+    *":$bin_dir:"*) return 0 ;;
+  esac
+
+  local line="export PATH=\"$bin_dir:\$PATH\""
+  local candidates=()
+
+  if [[ -n "${ZDOTDIR:-}" ]]; then
+    candidates+=("${ZDOTDIR}/.zshrc")
+  fi
+  candidates+=("${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.profile")
+
+  local rc_file=""
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "$candidate" ]]; then
+      rc_file="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$rc_file" ]]; then
+    rc_file="${HOME}/.zshrc"
+  fi
+
+  mkdir -p "$(dirname "$rc_file")"
+  touch "$rc_file"
+  if ! grep -F "$line" "$rc_file" >/dev/null 2>&1; then
+    {
+      printf '\n'
+      printf '%s\n' "$line"
+    } >> "$rc_file"
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./release/install.sh
@@ -113,6 +148,10 @@ if ! install "$binary_path" "$target_path" 2>/dev/null; then
     echo "failed to install $APP_NAME to $INSTALL_DIR" >&2
     exit 1
   fi
+fi
+
+if [[ "$target_path" == "$HOME/"* ]]; then
+  ensure_path_persisted "$(dirname "$target_path")"
 fi
 
 echo "Installed $APP_NAME $VERSION to $target_path"
