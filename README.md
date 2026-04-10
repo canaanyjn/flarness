@@ -20,7 +20,7 @@ AI agents are rewriting the development flow. To effectively manage a Flutter ap
 Option 1: install a published release on Darwin/Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/canaanyjn/flarness/main/release/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/canaanyjn/flarness/main/release/install.sh | bash
 ```
 
 Option 2: build from source
@@ -50,7 +50,6 @@ After that, the installed skill can guide an agent through the Flarness workflow
 Note:
 
 - `skills/flarness/` is the canonical install path for external skill installers.
-- `skill-flarness/` is kept as a compatibility copy for existing local references.
 
 ## 🛠 Usage
 

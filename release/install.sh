@@ -4,8 +4,7 @@ set -euo pipefail
 APP_NAME="flarness"
 REPO="${GH_REPO:-canaanyjn/flarness}"
 VERSION="${RELEASE_VERSION:-latest}"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-FALLBACK_INSTALL_DIR="${HOME}/.local/bin"
+INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
 TMP_DIR="$(mktemp -d)"
 CHECKSUM_FILE="checksums.txt"
 
@@ -56,7 +55,7 @@ Usage: ./release/install.sh
 Environment:
   GH_REPO          GitHub repo in owner/name form. Default: canaanyjn/flarness
   RELEASE_VERSION  Release tag to install, or "latest". Default: latest
-  INSTALL_DIR      Directory to place the flarness binary. Default: /usr/local/bin
+  INSTALL_DIR      Directory to place the flarness binary. Default: ~/.local/bin
 EOF
 }
 
@@ -138,16 +137,9 @@ fi
 
 mkdir -p "$INSTALL_DIR"
 target_path="$INSTALL_DIR/$APP_NAME"
-if ! install "$binary_path" "$target_path" 2>/dev/null; then
-  if [[ "${INSTALL_DIR}" == "/usr/local/bin" ]]; then
-    INSTALL_DIR="$FALLBACK_INSTALL_DIR"
-    mkdir -p "$INSTALL_DIR"
-    target_path="$INSTALL_DIR/$APP_NAME"
-    install "$binary_path" "$target_path"
-  else
-    echo "failed to install $APP_NAME to $INSTALL_DIR" >&2
-    exit 1
-  fi
+if ! install "$binary_path" "$target_path"; then
+  echo "failed to install $APP_NAME to $INSTALL_DIR" >&2
+  exit 1
 fi
 
 if [[ "$target_path" == "$HOME/"* ]]; then
