@@ -161,6 +161,9 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 		if nativeErr == nil {
 			return nativeResult, nil
 		}
+		if shouldUseNativeDesktopScreenshot(s.device, output) {
+			return nil, nativeErr
+		}
 
 		fallbackResult, fallbackOutput, fallbackErr := s.captureFlutterFallback(outPath)
 		if fallbackErr == nil {
@@ -209,6 +212,10 @@ func (s *Screenshotter) captureFlutterFallback(outPath string) (*ScreenshotResul
 func (s *Screenshotter) captureNativeDesktop(outPath string, flutterErr error, flutterOutput []byte) (*ScreenshotResult, error) {
 	if !shouldUseNativeDesktopScreenshot(s.device, flutterOutput) {
 		return nil, flutterErr
+	}
+
+	if platform.IsMacOS(s.device) {
+		return nil, fmt.Errorf("screenshots are not supported on macOS")
 	}
 
 	cmd := exec.Command("screencapture", "-x", outPath)

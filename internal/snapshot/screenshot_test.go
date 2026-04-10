@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -170,3 +171,18 @@ func TestShouldUseNativeDesktopScreenshot(t *testing.T) {
 		t.Fatal("unexpected native desktop fallback for unrelated error")
 	}
 }
+
+func TestCaptureNativeDesktopReturnsUnsupportedOnMacOS(t *testing.T) {
+	s := NewScreenshotter("/test", "macos", "", t.TempDir())
+	_, err := s.captureNativeDesktop(filepath.Join(t.TempDir(), "shot.png"), assertErr("flutter screenshot failed"), []byte("Screenshot not supported for macOS."))
+	if err == nil {
+		t.Fatal("expected macOS screenshot to be unsupported")
+	}
+	if !strings.Contains(err.Error(), "not supported on macOS") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+type assertErr string
+
+func (e assertErr) Error() string { return string(e) }

@@ -77,7 +77,7 @@ flarness help
 - `status --session <session>`: returns whether the daemon session is running and what project/device it controls.
 - `reload --session <session>`: sends hot reload.
 - `restart --session <session>`: sends hot restart.
-- `screenshot --session <session>`: captures the current app screen.
+- `screenshot --session <session>`: captures the current app screen on supported platforms.
 - `inspect --session <session>`: returns the structural debugging view, using widget tree or render tree data.
 - `semantics --session <session>`: returns the automation-facing view with labels, actions, focus state, and bounds.
 - `logs --session <session>`: queries structured logs.
@@ -178,7 +178,7 @@ flarness stop --session <session>
 ## How to use results
 
 - Prefer parsing returned JSON instead of grepping plain text.
-- Use `screenshot` for visual state, `inspect` for structural debugging, and `semantics` for interaction targeting after a UI change.
+- Use `screenshot` for visual state on supported platforms, `inspect` for structural debugging, and `semantics` for interaction targeting after a UI change.
 - Use `logs` for runtime failures, layout issues, and framework errors.
 - Use `analyze` for static issues before or after reload.
 - If `reload` returns an error payload, inspect the structured errors first, then fall back to `logs` or `restart`.
@@ -198,7 +198,7 @@ flarness stop --session <session>
 - Keep commands atomic: call `screenshot` and `inspect` separately when both are needed.
 - If you do not know the target session, run `flarness sessions list`.
 - If the daemon for a session is not running, call `start` for that project instead of retrying other commands.
-- For web devices, screenshot may use CDP internally; otherwise Flarness falls back to Flutter's screenshot command.
+- For web devices, screenshot may use CDP internally; otherwise Flarness falls back to Flutter's screenshot command when the target platform supports it.
 - Keep the project path absolute when working across multiple repos to avoid ambiguity.
 
 ## Common log queries
@@ -227,6 +227,8 @@ flarness stop --session <session>
   use `semantics` for interaction decisions and treat `inspect` as structural/debugging context.
 - On macOS, input focus can drift after rapid interactions:
   slow down the sequence and verify focus-sensitive actions with `semantics` between steps.
+- On macOS, `screenshot` is currently unsupported:
+  use `inspect`, `semantics`, and `logs` instead of retrying screenshot commands.
 - `stop` reports success but you need to be certain the session is clean:
   verify with `flarness status --session <session>` and, if needed, inspect recent logs before restarting.
 - Need machine-readable command schema:
