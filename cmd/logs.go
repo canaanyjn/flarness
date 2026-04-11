@@ -24,12 +24,12 @@ var logsCmd = &cobra.Command{
 	Long: `Query structured logs from the running Flutter application.
 
 Examples:
-  flarness logs                          # Latest 50 logs
-  flarness logs --limit 200              # Latest 200 logs
-  flarness logs --since 30s              # Logs from last 30 seconds
-  flarness logs --level error            # Only errors
- flarness logs --grep "overflow"        # Regex search
-  flarness logs --grep "Error" --since 5m --source framework`,
+  flarness diagnose logs                          # Latest 50 logs
+  flarness diagnose logs --limit 200              # Latest 200 logs
+  flarness diagnose logs --since 30s              # Logs from last 30 seconds
+  flarness diagnose logs --level error            # Only errors
+  flarness diagnose logs --grep "overflow"        # Regex search
+  flarness diagnose logs --grep "Error" --since 5m --source framework`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client, _ := sessionClient(cmd)
 
@@ -83,5 +83,4 @@ func init() {
 	logsCmd.Flags().BoolVar(&logsList, "list", false, "list all log files")
 	logsCmd.Flags().StringVar(&logsClean, "clean", "", "clean old logs (e.g. --clean --keep 7d)")
 	logsCmd.Flags().StringVar(&logsExport, "export", "", "export logs to file")
-	rootCmd.AddCommand(logsCmd)
 }

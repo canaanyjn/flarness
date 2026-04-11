@@ -57,7 +57,7 @@ All commands return a JSON object with a `status` field.
 
 ### Start the development loop
 ```bash
-flarness start --project /path/to/flutter_project --device chrome
+flarness app start --project /path/to/flutter_project --device chrome
 ```
 
 ### Configure a Flutter wrapper command
@@ -81,12 +81,12 @@ flarness sessions list
 
 ### Get current status
 ```bash
-flarness status --session <session>
+flarness app status --session <session>
 ```
 
 ### Capture a UI Screenshot
 ```bash
-flarness screenshot --session <session>
+flarness observe screenshot --session <session>
 ```
 
 On macOS, screenshot support is limited to Flutter-rendered content and
@@ -101,13 +101,13 @@ native Flutter path fails.
 
 ### Inspect the current UI structure
 ```bash
-flarness inspect --session <session>
+flarness observe inspect --session <session>
 ```
 
 ### Choose the right view
 ```text
-inspect   = structure/debugging view (widget tree or render tree)
-semantics = automation/interaction view (labels, actions, focus, bounds)
+observe inspect   = structure/debugging view (widget tree or render tree)
+observe semantics = automation/interaction view (labels, actions, focus, bounds)
 ```
 
 ### Drive the UI
@@ -124,17 +124,12 @@ flarness help [command]
 
 ## 📖 Command list
 
-- `start`: Start the Flarness daemon and launch the Flutter app.
-- `stop`: Stop a specific background daemon session and terminate its Flutter app.
-- `reload`: Perform a Hot Reload.
-- `restart`: Perform a Hot Restart.
-- `screenshot`: Capture an image of the current screen.
-- `inspect`: Get the structural debugging view of the current UI.
-- `semantics`: Get the automation-facing view used for targeting and interaction.
+- `app`: Start, stop, inspect status, reload, and restart the running Flutter app.
+- `observe`: Capture screenshots, inspect UI structure, and dump semantics.
 - `interact`: Group UI interaction subcommands such as `tap`, `type`, `wait`, `scroll`, `swipe`, and `longpress`.
-- `logs`: Stream recent records from the application log.
-- `status`: Check a specific daemon session and what it's controlling.
+- `diagnose`: Query logs and run analyzer checks.
 - `sessions`: List known daemon sessions.
+- `config`: Manage named Flutter project configuration.
 - `help`: Get structural information about these commands.
 
 ## Flutter App Integration
@@ -155,7 +150,7 @@ dependencies:
     git:
       url: https://github.com/canaanyjn/flarness.git
       path: packages/flarness_plugin
-      ref: v0.1.0
+      ref: v0.2.0
 ```
 
 ## 🤝 License

@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/canaanyjn/flarness/main/release/ins
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/canaanyjn/flarness/main/release/install.sh | \
-  RELEASE_VERSION=v0.1.2 INSTALL_DIR="$HOME/.local/bin" sh
+  RELEASE_VERSION=v0.2.0 INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
 - If the environment is already inside the Flarness repo, building from source is also acceptable:
@@ -97,13 +97,13 @@ flarness help
 Start a project:
 
 ```bash
-flarness start --project /absolute/path/to/flutter_app --device chrome
+flarness app start --project /absolute/path/to/flutter_app --device chrome
 ```
 
 If already inside the Flutter project:
 
 ```bash
-flarness start
+flarness app start
 ```
 
 List available sessions:
@@ -115,65 +115,65 @@ flarness sessions list
 Check state:
 
 ```bash
-flarness status --session <session>
+flarness app status --session <session>
 ```
 
 Reload after edits:
 
 ```bash
-flarness reload --session <session>
+flarness app reload --session <session>
 ```
 
 Recover with restart:
 
 ```bash
-flarness restart --session <session>
+flarness app restart --session <session>
 ```
 
 Inspect widget tree only:
 
 ```bash
-flarness inspect --session <session> --max-depth 6
+flarness observe inspect --session <session> --max-depth 6
 ```
 
 Dump the automation-facing semantics tree:
 
 ```bash
-flarness semantics --session <session>
+flarness observe semantics --session <session>
 ```
 
 Capture only a screenshot:
 
 ```bash
-flarness screenshot --session <session>
+flarness observe screenshot --session <session>
 ```
 
 Look for recent errors:
 
 ```bash
-flarness logs --session <session> --level error --since 5m
+flarness diagnose logs --session <session> --level error --since 5m
 ```
 
 Run analyzer:
 
 ```bash
-flarness analyze --session <session>
+flarness diagnose analyze --session <session>
 ```
 
 Stop the daemon:
 
 ```bash
-flarness stop --session <session>
+flarness app stop --session <session>
 ```
 
 ## Recommended interaction sequence
 
-- Start with `flarness semantics --session <session>` to see what the UI exposes for automation.
+- Start with `flarness observe semantics --session <session>` to see what the UI exposes for automation.
 - Use `flarness interact tap --session <session>` to focus or select the target element.
 - Use `flarness interact type --session <session>` only after focus is confirmed or intentionally set.
 - Use `flarness interact wait --session <session>` when the next UI state is expected to appear asynchronously.
-- After every write or navigation action, run `flarness semantics --session <session>` again to verify the UI actually changed.
-- Use `flarness inspect --session <session>` only when interaction succeeds but the structure or layout still needs explanation.
+- After every write or navigation action, run `flarness observe semantics --session <session>` again to verify the UI actually changed.
+- Use `flarness observe inspect --session <session>` only when interaction succeeds but the structure or layout still needs explanation.
 
 ## How to use results
 
@@ -205,24 +205,24 @@ flarness stop --session <session>
 
 ## Common log queries
 
-- Recent errors: `flarness logs --session <session> --level error --since 5m`
-- Very recent failures: `flarness logs --session <session> --since 30s`
-- Framework-only failures: `flarness logs --session <session> --source framework --level error`
-- Search a symptom: `flarness logs --session <session> --grep "overflow" --since 5m`
-- Search app output for a feature: `flarness logs --session <session> --source app --grep "login"`
+- Recent errors: `flarness diagnose logs --session <session> --level error --since 5m`
+- Very recent failures: `flarness diagnose logs --session <session> --since 30s`
+- Framework-only failures: `flarness diagnose logs --session <session> --source framework --level error`
+- Search a symptom: `flarness diagnose logs --session <session> --grep "overflow" --since 5m`
+- Search app output for a feature: `flarness diagnose logs --session <session> --source app --grep "login"`
 
 ## Troubleshooting
 
 - Error saying daemon is not running:
-  run `flarness sessions list` to confirm the target session, then `flarness start` in the Flutter project if needed.
+  run `flarness sessions list` to confirm the target session, then `flarness app start` in the Flutter project if needed.
 - `start` fails during startup:
   inspect the daemon log path mentioned in the error; Flarness now waits for daemon IPC and Flutter `running` state before reporting success.
 - Error saying no `pubspec.yaml`:
   you are not pointing at a Flutter project root.
 - Reload appears successful but UI is stale:
-  run `flarness restart --session <session>`.
+  run `flarness app restart --session <session>`.
 - `interact tap` or `interact type` succeeded but the UI did not change:
-  rerun `flarness semantics --session <session>`, refocus the target with `interact tap --session <session>`, then retry the action.
+  rerun `flarness observe semantics --session <session>`, refocus the target with `interact tap --session <session>`, then retry the action.
 - Text input lands in the wrong field or does not persist:
   explicitly tap the field again, then use `interact type --session <session>`; verify the field value afterward.
 - On macOS, `inspect` may fall back to render tree output instead of a rich widget tree:
@@ -233,8 +233,8 @@ flarness stop --session <session>
   ensure the app includes `flarness_plugin` and calls `FlarnessPluginBinding.ensureInitialized()` in debug mode.
 - On macOS, screenshot output does not include desktop pixels, window chrome, or native platform views:
   treat it as Flutter-content capture only.
-- `stop` reports success but you need to be certain the session is clean:
-  verify with `flarness status --session <session>` and, if needed, inspect recent logs before restarting.
+- `app stop` reports success but you need to be certain the session is clean:
+  verify with `flarness app status --session <session>` and, if needed, inspect recent logs before restarting.
 - Need machine-readable command schema:
   run `flarness help` or `flarness help <command>`.
 

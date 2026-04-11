@@ -39,8 +39,8 @@ Publish only selected assets from the built release directory:
 
 ```bash
 ./release/publish-gh.sh \
-  flarness_v0.1.0_darwin_arm64.tar.gz \
-  flarness_v0.1.0_linux_amd64.tar.gz \
+  flarness_v0.2.0_darwin_arm64.tar.gz \
+  flarness_v0.2.0_linux_amd64.tar.gz \
   checksums.txt
 ```
 
@@ -60,7 +60,7 @@ Environment variables:
 Note:
 
 - `publish-gh.sh` now refuses to publish an inferred `git describe` value like
-  `v0.1.0-8-g<sha>` unless you explicitly set `RELEASE_VERSION`. This prevents
+  `v0.2.0-8-g<sha>` unless you explicitly set `RELEASE_VERSION`. This prevents
   accidental GitHub releases from untagged commits.
 
 ## Install a published release
@@ -74,7 +74,7 @@ Install the latest release for the current Darwin/Linux host:
 Install a specific release tag into a custom directory:
 
 ```bash
-RELEASE_VERSION=v0.1.0 INSTALL_DIR="$HOME/.local/bin" ./release/install.sh
+RELEASE_VERSION=v0.2.0 INSTALL_DIR="$HOME/.local/bin" ./release/install.sh
 ```
 
 `install.sh` downloads the archive and `checksums.txt` from the GitHub release
@@ -84,8 +84,8 @@ and verifies the SHA-256 checksum before installing when `shasum` or
 ## Typical flow
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.0
+git push origin v0.2.0
 ./release/build.sh darwin/amd64 darwin/arm64 linux/amd64 linux/arm64
 ./release/publish-gh.sh
 ```

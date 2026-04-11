@@ -101,7 +101,7 @@ var helpCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(helpCmd)
+	rootCmd.SetHelpCommand(helpCmd)
 	rootCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if cmd == nil || cmd == rootCmd {
 			printCommandOverview()

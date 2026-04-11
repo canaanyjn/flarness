@@ -67,5 +67,4 @@ var stopCmd = &cobra.Command{
 
 func init() {
 	addSessionFlag(stopCmd)
-	rootCmd.AddCommand(stopCmd)
 }

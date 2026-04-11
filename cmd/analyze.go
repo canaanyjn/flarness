@@ -26,5 +26,4 @@ var analyzeCmd = &cobra.Command{
 
 func init() {
 	addSessionFlag(analyzeCmd)
-	rootCmd.AddCommand(analyzeCmd)
 }

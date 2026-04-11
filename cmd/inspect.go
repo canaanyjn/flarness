@@ -50,5 +50,4 @@ actions, focus, and bounding rectangles.`,
 func init() {
 	addSessionFlag(inspectCmd)
 	inspectCmd.Flags().IntVar(&inspectMaxDepth, "max-depth", 0, "max depth of the widget tree (0 = unlimited)")
-	rootCmd.AddCommand(inspectCmd)
 }

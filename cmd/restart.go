@@ -26,5 +26,4 @@ var restartCmd = &cobra.Command{
 
 func init() {
 	addSessionFlag(restartCmd)
-	rootCmd.AddCommand(restartCmd)
 }

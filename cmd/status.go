@@ -26,5 +26,4 @@ var statusCmd = &cobra.Command{
 
 func init() {
 	addSessionFlag(statusCmd)
-	rootCmd.AddCommand(statusCmd)
 }

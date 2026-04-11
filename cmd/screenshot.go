@@ -35,5 +35,4 @@ The screenshot is saved to ~/.flarness/screenshots/ by default.`,
 
 func init() {
 	addSessionFlag(screenshotCmd)
-	rootCmd.AddCommand(screenshotCmd)
 }

@@ -17,7 +17,7 @@ func addSessionFlag(cmd *cobra.Command) {
 func requireSession(cmd *cobra.Command) string {
 	session, _ := cmd.Flags().GetString(sessionFlagName)
 	if session == "" {
-		printError("missing required --session; run 'flarness sessions list' or use the session returned by 'flarness start'")
+		printError("missing required --session; run 'flarness sessions list' or use the session returned by 'flarness app start'")
 	}
 	return session
 }

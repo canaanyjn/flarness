@@ -21,7 +21,7 @@ Use inspect instead when you want structural debugging information about the
 widget tree or render tree.
 
 Examples:
-  flarness semantics`,
+  flarness observe semantics`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, _ := sessionClient(cmd)
 
@@ -45,5 +45,4 @@ Examples:
 
 func init() {
 	addSessionFlag(semanticsCmd)
-	rootCmd.AddCommand(semanticsCmd)
 }

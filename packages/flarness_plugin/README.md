@@ -14,9 +14,9 @@ uses for UI automation in debug builds.
 - `ext.flarness.swipe`
 - `ext.flarness.semanticsAction`
 
-It also keeps Flutter semantics enabled in debug mode so `flarness semantics`
-and the `flarness interact ...` subcommands can resolve nodes from the
-semantics tree.
+It also keeps Flutter semantics enabled in debug mode so
+`flarness observe semantics` and the `flarness interact ...` subcommands can
+resolve nodes from the semantics tree.
 
 ## Install
 
@@ -36,7 +36,7 @@ dependencies:
     git:
       url: https://github.com/canaanyjn/flarness.git
       path: packages/flarness_plugin
-      ref: v0.1.0
+      ref: v0.2.0
 ```
 
 ## Usage
@@ -58,8 +58,9 @@ no-op.
 
 ## macOS screenshot behavior
 
-On macOS, `flarness screenshot` uses `ext.flarness.captureScreenshot` from this
-plugin instead of a host-level screen capture API.
+On macOS, `flarness observe screenshot` uses
+`ext.flarness.captureScreenshot` from this plugin instead of a host-level
+screen capture API.
 
 - It captures Flutter-rendered content from the active `RenderView`.
 - It does not capture the desktop, window frame, title bar, menu bar, or other

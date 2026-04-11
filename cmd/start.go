@@ -161,7 +161,6 @@ func init() {
 	startCmd.Flags().StringVarP(&startProject, "project", "p", "", "path to Flutter project or configured project name (default: current directory)")
 	startCmd.Flags().StringVarP(&startDevice, "device", "d", "", "target device (default: auto-detect)")
 	startCmd.Flags().StringArrayVar(&startExtraArgs, "extra-args", nil, "extra arguments for flutter run; accepts repeated flags or a single JSON array string")
-	rootCmd.AddCommand(startCmd)
 }
 
 func waitForStartedSession(d *daemon.Daemon, client *ipc.Client) (map[string]any, error) {
