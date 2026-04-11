@@ -198,7 +198,9 @@ flarness stop --session <session>
 - Keep commands atomic: call `screenshot` and `inspect` separately when both are needed.
 - If you do not know the target session, run `flarness sessions list`.
 - If the daemon for a session is not running, call `start` for that project instead of retrying other commands.
-- For web devices, screenshot may use CDP internally; otherwise Flarness falls back to Flutter's screenshot command when the target platform supports it.
+- For web devices, screenshot uses CDP internally.
+- For macOS debug apps that initialize `flarness_plugin`, screenshot captures Flutter-rendered content through the app-side VM service extension.
+- For other supported non-web platforms, Flarness falls back to Flutter's screenshot command.
 - Keep the project path absolute when working across multiple repos to avoid ambiguity.
 
 ## Common log queries
@@ -227,8 +229,10 @@ flarness stop --session <session>
   use `semantics` for interaction decisions and treat `inspect` as structural/debugging context.
 - On macOS, input focus can drift after rapid interactions:
   slow down the sequence and verify focus-sensitive actions with `semantics` between steps.
-- On macOS, `screenshot` is currently unsupported:
-  use `inspect`, `semantics`, and `logs` instead of retrying screenshot commands.
+- On macOS, `screenshot` returns an integration error:
+  ensure the app includes `flarness_plugin` and calls `FlarnessPluginBinding.ensureInitialized()` in debug mode.
+- On macOS, screenshot output does not include desktop pixels, window chrome, or native platform views:
+  treat it as Flutter-content capture only.
 - `stop` reports success but you need to be certain the session is clean:
   verify with `flarness status --session <session>` and, if needed, inspect recent logs before restarting.
 - Need machine-readable command schema:

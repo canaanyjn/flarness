@@ -11,6 +11,8 @@ var screenshotCmd = &cobra.Command{
 	Long: `Capture a screenshot of the running Flutter app.
 
 For Web platform: uses Chrome DevTools Protocol (CDP) for instant capture.
+For macOS debug apps with flarness_plugin initialized: captures Flutter-rendered
+content through a VM service extension.
 For other platforms: uses flutter screenshot command.
 
 The screenshot is saved to ~/.flarness/screenshots/ by default.`,

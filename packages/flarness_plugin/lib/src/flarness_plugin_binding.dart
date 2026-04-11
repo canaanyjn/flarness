@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -13,9 +14,20 @@ import 'package:flutter/widgets.dart';
 class FlarnessPluginBinding {
   FlarnessPluginBinding._();
 
+  static const String _pingExtension = 'ext.flarness.ping';
+  static const String _dumpSemanticsExtension = 'ext.flarness.dumpSemantics';
+  static const String _captureScreenshotExtension =
+      'ext.flarness.captureScreenshot';
+  static const String _tapAtExtension = 'ext.flarness.tapAt';
+  static const String _typeExtension = 'ext.flarness.type';
+  static const String _swipeExtension = 'ext.flarness.swipe';
+  static const String _semanticsActionExtension =
+      'ext.flarness.semanticsAction';
+
   static bool _initialized = false;
   static SemanticsHandle? _semanticsHandle;
   static int _pointerCounter = 1000;
+  static final Set<String> _registeredExtensions = <String>{};
 
   /// Enables Flarness service extensions in debug builds.
   static void ensureInitialized() {
@@ -28,19 +40,48 @@ class FlarnessPluginBinding {
 
     _semanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
 
-    developer.registerExtension('ext.flarness.ping', _handlePing);
-    developer.registerExtension(
-      'ext.flarness.dumpSemantics',
-      _handleDumpSemantics,
-    );
-    developer.registerExtension('ext.flarness.tapAt', _handleTapAt);
-    developer.registerExtension('ext.flarness.type', _handleType);
-    developer.registerExtension('ext.flarness.swipe', _handleSwipe);
-    developer.registerExtension(
-      'ext.flarness.semanticsAction',
-      _handleSemanticsAction,
-    );
+    _registerExtension(_pingExtension, _handlePing);
+    _registerExtension(_dumpSemanticsExtension, _handleDumpSemantics);
+    _registerExtension(_captureScreenshotExtension, _handleCaptureScreenshot);
+    _registerExtension(_tapAtExtension, _handleTapAt);
+    _registerExtension(_typeExtension, _handleType);
+    _registerExtension(_swipeExtension, _handleSwipe);
+    _registerExtension(_semanticsActionExtension, _handleSemanticsAction);
   }
+
+  @visibleForTesting
+  static Set<String> get debugRegisteredExtensions =>
+      Set<String>.unmodifiable(_registeredExtensions);
+
+  @visibleForTesting
+  static Future<Map<String, Object?>> debugCaptureScreenshotPayload() =>
+      _captureScreenshotPayload();
+
+  @visibleForTesting
+  static RenderView debugSelectScreenshotRenderView(
+    List<RenderView> renderViews,
+  ) =>
+      _selectScreenshotRenderView(renderViews);
+
+  @visibleForTesting
+  static void debugResetForTest() {
+    _semanticsHandle?.dispose();
+    _semanticsHandle = null;
+  }
+
+  @visibleForTesting
+  static Map<String, Object?> debugBuildScreenshotPayload(
+    Uint8List pngBytes, {
+    required int width,
+    required int height,
+    required double pixelRatio,
+  }) =>
+      _buildScreenshotPayload(
+        pngBytes,
+        width: width,
+        height: height,
+        pixelRatio: pixelRatio,
+      );
 
   static Future<developer.ServiceExtensionResponse> _handlePing(
     String method,
@@ -106,6 +147,18 @@ class FlarnessPluginBinding {
         'status': 'ok',
         'nodes': [_serializeSemanticsNode(root)],
       };
+      return _ok(payload);
+    } catch (error, stackTrace) {
+      return _error('$error', stackTrace: stackTrace);
+    }
+  }
+
+  static Future<developer.ServiceExtensionResponse> _handleCaptureScreenshot(
+    String method,
+    Map<String, String> parameters,
+  ) async {
+    try {
+      final payload = await _captureScreenshotPayload();
       return _ok(payload);
     } catch (error, stackTrace) {
       return _error('$error', stackTrace: stackTrace);
@@ -517,6 +570,128 @@ class FlarnessPluginBinding {
         RendererBinding.instance.rootPipelineOwner.semanticsOwner;
   }
 
+  static void _registerExtension(
+    String name,
+    Future<developer.ServiceExtensionResponse> Function(
+      String method,
+      Map<String, String> parameters,
+    ) handler,
+  ) {
+    developer.registerExtension(name, handler);
+    _registeredExtensions.add(name);
+  }
+
+  static Future<Map<String, Object?>> _captureScreenshotPayload() async {
+    await _waitForStableFrame();
+
+    final RenderView renderView = _selectScreenshotRenderView(
+      RendererBinding.instance.renderViews.toList(growable: false),
+    );
+
+    final ContainerLayer? layer = renderView.layer;
+    if (layer == null) {
+      throw StateError(
+        'screenshot layer unavailable; ensure the app has rendered at least one frame',
+      );
+    }
+
+    final ui.SceneBuilder builder =
+        RendererBinding.instance.createSceneBuilder();
+    final ui.Scene scene = layer.buildScene(builder);
+    final double pixelRatio = renderView.flutterView.devicePixelRatio;
+    ui.Image? image;
+    try {
+      final int width = (renderView.size.width * pixelRatio).ceil();
+      final int height = (renderView.size.height * pixelRatio).ceil();
+      if (width <= 0 || height <= 0) {
+        throw StateError('render view has invalid dimensions for screenshot');
+      }
+      image = await scene.toImage(width, height);
+    } finally {
+      scene.dispose();
+    }
+
+    try {
+      return _encodeScreenshotPayload(image, pixelRatio: pixelRatio);
+    } finally {
+      image.dispose();
+    }
+  }
+
+  static Future<Map<String, Object?>> _encodeScreenshotPayload(
+    ui.Image image, {
+    required double pixelRatio,
+  }) async {
+    final ByteData? byteData = await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    if (byteData == null) {
+      throw StateError('failed to encode screenshot as PNG');
+    }
+    final Uint8List pngBytes = byteData.buffer.asUint8List(
+      byteData.offsetInBytes,
+      byteData.lengthInBytes,
+    );
+    return _buildScreenshotPayload(
+      pngBytes,
+      width: image.width,
+      height: image.height,
+      pixelRatio: pixelRatio,
+    );
+  }
+
+  static Map<String, Object?> _buildScreenshotPayload(
+    Uint8List pngBytes, {
+    required int width,
+    required int height,
+    required double pixelRatio,
+  }) {
+    return <String, Object?>{
+      'status': 'ok',
+      'format': 'png',
+      'image_base64': base64Encode(pngBytes),
+      'width': width,
+      'height': height,
+      'pixel_ratio': pixelRatio,
+    };
+  }
+
+  static RenderView _selectScreenshotRenderView(List<RenderView> renderViews) {
+    final List<RenderView> readyViews = renderViews.where((RenderView view) {
+      return view.child != null &&
+          view.layer != null &&
+          view.size.width > 0 &&
+          view.size.height > 0;
+    }).toList(growable: false);
+
+    if (readyViews.isEmpty) {
+      throw StateError('no active RenderView available for screenshot capture');
+    }
+    if (readyViews.length == 1) {
+      return readyViews.single;
+    }
+
+    final ui.FlutterView? implicitView =
+        WidgetsBinding.instance.platformDispatcher.implicitView;
+    if (implicitView != null) {
+      final List<RenderView> implicitMatches = readyViews.where((
+        RenderView view,
+      ) {
+        return view.flutterView.viewId == implicitView.viewId;
+      }).toList(growable: false);
+      if (implicitMatches.length == 1) {
+        return implicitMatches.single;
+      }
+    }
+
+    final List<int> viewIds = readyViews
+        .map((RenderView view) => view.flutterView.viewId)
+        .toList(growable: false);
+    throw StateError(
+      'multiple RenderViews detected for screenshot capture: $viewIds',
+    );
+  }
+
   static Future<developer.ServiceExtensionResponse> _ok(
     Map<String, Object?> payload,
   ) async {
@@ -602,5 +777,17 @@ class FlarnessPluginBinding {
     }
 
     await SchedulerBinding.instance.endOfFrame;
+  }
+
+  static Future<void> _waitForStableFrame() async {
+    await SchedulerBinding.instance.endOfFrame.timeout(
+      const Duration(milliseconds: 250),
+      onTimeout: () {},
+    );
+    SchedulerBinding.instance.scheduleFrame();
+    await SchedulerBinding.instance.endOfFrame.timeout(
+      const Duration(milliseconds: 250),
+      onTimeout: () {},
+    );
   }
 }

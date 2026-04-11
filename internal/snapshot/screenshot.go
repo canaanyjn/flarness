@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/canaanyjn/flarness/internal/platform"
+	"github.com/canaanyjn/flarness/internal/vmservice"
 	"github.com/gorilla/websocket"
 )
 
@@ -56,6 +57,9 @@ func (s *Screenshotter) Capture() (*ScreenshotResult, error) {
 
 	if s.isWebDevice() {
 		return s.captureCDP(outPath)
+	}
+	if platform.IsMacOS(s.device) {
+		return s.captureMacOS(outPath)
 	}
 	return s.captureFlutter(outPath)
 }
@@ -193,6 +197,60 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 	return nil, fmt.Errorf("flutter screenshot produced a non-PNG artifact: %v\nOutput: %s\nFallback output: %s", validationErr, string(output), string(fallbackOutput))
 }
 
+func (s *Screenshotter) captureMacOS(outPath string) (*ScreenshotResult, error) {
+	if s.debugURL == "" {
+		return nil, fmt.Errorf("no debug URL available for macOS screenshot")
+	}
+
+	client := vmservice.NewClient(s.debugURL)
+	raw, err := client.CallExtension("ext.flarness.captureScreenshot", nil, 20*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload struct {
+		Status      string  `json:"status"`
+		Format      string  `json:"format"`
+		ImageBase64 string  `json:"image_base64"`
+		Width       int     `json:"width"`
+		Height      int     `json:"height"`
+		PixelRatio  float64 `json:"pixel_ratio"`
+		Error       string  `json:"error"`
+	}
+	if err := vmservice.DecodeExtensionResult(raw, &payload); err != nil {
+		return nil, err
+	}
+	if payload.Status == "error" {
+		if payload.Error != "" {
+			return nil, fmt.Errorf(payload.Error)
+		}
+		return nil, fmt.Errorf("captureScreenshot service extension returned error")
+	}
+	if payload.ImageBase64 == "" {
+		return nil, fmt.Errorf("captureScreenshot returned no image data")
+	}
+
+	imgData, err := base64.StdEncoding.DecodeString(payload.ImageBase64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode macOS screenshot: %w", err)
+	}
+	if !isPNGData(imgData) {
+		return nil, fmt.Errorf("captureScreenshot returned non-PNG data: %s", detectScreenshotFormat(imgData))
+	}
+
+	if err := os.WriteFile(outPath, imgData, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write screenshot: %w", err)
+	}
+
+	result, err := s.validateScreenshotFile(outPath)
+	if err != nil {
+		return nil, err
+	}
+	result.Width = payload.Width
+	result.Height = payload.Height
+	return result, nil
+}
+
 func (s *Screenshotter) captureFlutterFallback(outPath string) (*ScreenshotResult, []byte, error) {
 	fallbackArgs := s.flutterScreenshotArgs(outPath)
 	fallbackCmd := exec.Command("flutter", fallbackArgs...)
@@ -212,10 +270,6 @@ func (s *Screenshotter) captureFlutterFallback(outPath string) (*ScreenshotResul
 func (s *Screenshotter) captureNativeDesktop(outPath string, flutterErr error, flutterOutput []byte) (*ScreenshotResult, error) {
 	if !shouldUseNativeDesktopScreenshot(s.device, flutterOutput) {
 		return nil, flutterErr
-	}
-
-	if platform.IsMacOS(s.device) {
-		return nil, fmt.Errorf("screenshots are not supported on macOS")
 	}
 
 	cmd := exec.Command("screencapture", "-x", outPath)

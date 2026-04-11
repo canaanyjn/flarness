@@ -1,11 +1,18 @@
 package snapshot
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestNewScreenshotter(t *testing.T) {
@@ -172,17 +179,242 @@ func TestShouldUseNativeDesktopScreenshot(t *testing.T) {
 	}
 }
 
-func TestCaptureNativeDesktopReturnsUnsupportedOnMacOS(t *testing.T) {
-	s := NewScreenshotter("/test", "macos", "", t.TempDir())
-	_, err := s.captureNativeDesktop(filepath.Join(t.TempDir(), "shot.png"), assertErr("flutter screenshot failed"), []byte("Screenshot not supported for macOS."))
-	if err == nil {
-		t.Fatal("expected macOS screenshot to be unsupported")
+func TestCaptureMacOSViaExtensionSuccess(t *testing.T) {
+	serverURL := startFakeVMServiceServer(t, func(method string, _ map[string]any) rpcResponse {
+		switch method {
+		case "getVM":
+			return rpcResponse{
+				Result: map[string]any{
+					"isolates": []map[string]any{
+						{"id": "isolates/1", "name": "main"},
+					},
+				},
+			}
+		case "ext.flarness.captureScreenshot":
+			return rpcResponse{
+				Result: map[string]any{
+					"result": string(mustJSON(t, map[string]any{
+						"status":       "ok",
+						"format":       "png",
+						"image_base64": base64.StdEncoding.EncodeToString(validPNGData()),
+						"width":        320,
+						"height":       180,
+						"pixel_ratio":  2.0,
+					})),
+				},
+			}
+		default:
+			return rpcResponse{Error: "unexpected method: " + method}
+		}
+	})
+
+	s := NewScreenshotter("/test", "macos", serverURL, t.TempDir())
+	result, err := s.Capture()
+	if err != nil {
+		t.Fatalf("Capture() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "not supported on macOS") {
+	if result.Width != 320 || result.Height != 180 {
+		t.Fatalf("unexpected dimensions: %+v", result)
+	}
+	if _, err := os.Stat(result.Path); err != nil {
+		t.Fatalf("expected screenshot file: %v", err)
+	}
+}
+
+func TestCaptureMacOSViaExtensionMissingPlugin(t *testing.T) {
+	serverURL := startFakeVMServiceServer(t, func(method string, _ map[string]any) rpcResponse {
+		switch method {
+		case "getVM":
+			return rpcResponse{
+				Result: map[string]any{
+					"isolates": []map[string]any{
+						{"id": "isolates/1", "name": "main"},
+					},
+				},
+			}
+		case "ext.flarness.captureScreenshot":
+			return rpcResponse{Error: "Unknown method \"ext.flarness.captureScreenshot\""}
+		default:
+			return rpcResponse{Error: "unexpected method: " + method}
+		}
+	})
+
+	s := NewScreenshotter("/test", "macos", serverURL, t.TempDir())
+	_, err := s.Capture()
+	if err == nil {
+		t.Fatal("expected missing extension error")
+	}
+	if !strings.Contains(err.Error(), "FlarnessPluginBinding.ensureInitialized()") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-type assertErr string
+func TestCaptureMacOSViaExtensionStatusError(t *testing.T) {
+	serverURL := startFakeVMServiceServer(t, func(method string, _ map[string]any) rpcResponse {
+		switch method {
+		case "getVM":
+			return rpcResponse{
+				Result: map[string]any{
+					"isolates": []map[string]any{
+						{"id": "isolates/1", "name": "main"},
+					},
+				},
+			}
+		case "ext.flarness.captureScreenshot":
+			return rpcResponse{
+				Result: map[string]any{
+					"result": string(mustJSON(t, map[string]any{
+						"status": "error",
+						"error":  "capture failed",
+					})),
+				},
+			}
+		default:
+			return rpcResponse{Error: "unexpected method: " + method}
+		}
+	})
 
-func (e assertErr) Error() string { return string(e) }
+	s := NewScreenshotter("/test", "macos", serverURL, t.TempDir())
+	_, err := s.Capture()
+	if err == nil || !strings.Contains(err.Error(), "capture failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCaptureMacOSViaExtensionInvalidBase64(t *testing.T) {
+	serverURL := startFakeVMServiceServer(t, func(method string, _ map[string]any) rpcResponse {
+		switch method {
+		case "getVM":
+			return rpcResponse{
+				Result: map[string]any{
+					"isolates": []map[string]any{
+						{"id": "isolates/1", "name": "main"},
+					},
+				},
+			}
+		case "ext.flarness.captureScreenshot":
+			return rpcResponse{
+				Result: map[string]any{
+					"result": string(mustJSON(t, map[string]any{
+						"status":       "ok",
+						"format":       "png",
+						"image_base64": "%%%not-base64%%%",
+					})),
+				},
+			}
+		default:
+			return rpcResponse{Error: "unexpected method: " + method}
+		}
+	})
+
+	s := NewScreenshotter("/test", "macos", serverURL, t.TempDir())
+	_, err := s.Capture()
+	if err == nil || !strings.Contains(err.Error(), "failed to decode macOS screenshot") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCaptureMacOSViaExtensionRejectsNonPNG(t *testing.T) {
+	serverURL := startFakeVMServiceServer(t, func(method string, _ map[string]any) rpcResponse {
+		switch method {
+		case "getVM":
+			return rpcResponse{
+				Result: map[string]any{
+					"isolates": []map[string]any{
+						{"id": "isolates/1", "name": "main"},
+					},
+				},
+			}
+		case "ext.flarness.captureScreenshot":
+			return rpcResponse{
+				Result: map[string]any{
+					"result": string(mustJSON(t, map[string]any{
+						"status":       "ok",
+						"format":       "png",
+						"image_base64": base64.StdEncoding.EncodeToString([]byte("hello")),
+					})),
+				},
+			}
+		default:
+			return rpcResponse{Error: "unexpected method: " + method}
+		}
+	})
+
+	s := NewScreenshotter("/test", "macos", serverURL, t.TempDir())
+	_, err := s.Capture()
+	if err == nil || !strings.Contains(err.Error(), "non-PNG data") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+type rpcResponse struct {
+	Result any
+	Error  string
+}
+
+func startFakeVMServiceServer(t *testing.T, handler func(method string, params map[string]any) rpcResponse) string {
+	t.Helper()
+
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade failed: %v", err)
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+		for {
+			var req struct {
+				ID     any            `json:"id"`
+				Method string         `json:"method"`
+				Params map[string]any `json:"params"`
+			}
+			if err := conn.ReadJSON(&req); err != nil {
+				return
+			}
+			resp := handler(req.Method, req.Params)
+			envelope := map[string]any{
+				"jsonrpc": "2.0",
+				"id":      req.ID,
+			}
+			if resp.Error != "" {
+				envelope["error"] = map[string]any{
+					"code":    -32601,
+					"message": resp.Error,
+				}
+			} else {
+				envelope["result"] = resp.Result
+			}
+			if err := conn.WriteJSON(envelope); err != nil {
+				t.Errorf("write failed: %v", err)
+				return
+			}
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return "ws" + strings.TrimPrefix(server.URL, "http")
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json marshal failed: %v", err)
+	}
+	return data
+}
+
+func validPNGData() []byte {
+	return []byte{
+		0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n',
+		0x00, 0x00, 0x00, 0x0d, 'I', 'H', 'D', 'R',
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0a, 'I', 'D', 'A', 'T',
+		0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05,
+		0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00,
+		0x00, 0x00, 'I', 'E', 'N', 'D', 0xae, 'B', 0x60, 0x82,
+	}
+}

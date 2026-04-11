@@ -89,6 +89,12 @@ flarness status --session <session>
 flarness screenshot --session <session>
 ```
 
+On macOS, screenshot support is limited to Flutter-rendered content and
+requires the app to initialize
+[`flarness_plugin`](/Users/tcn/WorkSpace/Programming/Tools/flarness/packages/flarness_plugin)
+in debug mode. It does not capture the desktop, window frame, or native
+platform views.
+
 ### Inspect the current UI structure
 ```bash
 flarness inspect --session <session>

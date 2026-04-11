@@ -8,6 +8,7 @@ uses for UI automation in debug builds.
 
 - `ext.flarness.ping`
 - `ext.flarness.dumpSemantics`
+- `ext.flarness.captureScreenshot`
 - `ext.flarness.tapAt`
 - `ext.flarness.type`
 - `ext.flarness.swipe`
@@ -54,3 +55,17 @@ void main() {
 
 The registration is debug-only. In release/profile, `ensureInitialized()` is a
 no-op.
+
+## macOS screenshot behavior
+
+On macOS, `flarness screenshot` uses `ext.flarness.captureScreenshot` from this
+plugin instead of a host-level screen capture API.
+
+- It captures Flutter-rendered content from the active `RenderView`.
+- It does not capture the desktop, window frame, title bar, menu bar, or other
+  apps.
+- If your page embeds native platform views, the result only guarantees the
+  Flutter-rendered content.
+- If the app does not call `FlarnessPluginBinding.ensureInitialized()` in debug
+  mode, Flarness will return a clear integration error instead of silently
+  falling back.
