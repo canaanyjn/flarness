@@ -95,6 +95,10 @@ requires the app to initialize
 in debug mode. It does not capture the desktop, window frame, or native
 platform views.
 
+On other non-web platforms, Flarness still tries `flutter screenshot` first and
+uses the same plugin-based Flutter-content capture as a fallback when the
+native Flutter path fails.
+
 ### Inspect the current UI structure
 ```bash
 flarness inspect --session <session>

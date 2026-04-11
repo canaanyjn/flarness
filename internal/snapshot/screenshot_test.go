@@ -347,6 +347,105 @@ func TestCaptureMacOSViaExtensionRejectsNonPNG(t *testing.T) {
 	}
 }
 
+func TestCaptureFlutterFallsBackToExtensionOnCommandError(t *testing.T) {
+	fakeFlutter := writeFakeFlutter(t, `#!/bin/sh
+echo "flutter screenshot failed" >&2
+exit 1
+`)
+	t.Setenv("PATH", filepath.Dir(fakeFlutter)+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	serverURL := startFakeVMServiceServer(t, func(method string, _ map[string]any) rpcResponse {
+		switch method {
+		case "getVM":
+			return rpcResponse{
+				Result: map[string]any{
+					"isolates": []map[string]any{
+						{"id": "isolates/1", "name": "main"},
+					},
+				},
+			}
+		case "ext.flarness.captureScreenshot":
+			return rpcResponse{
+				Result: map[string]any{
+					"result": string(mustJSON(t, map[string]any{
+						"status":       "ok",
+						"format":       "png",
+						"image_base64": base64.StdEncoding.EncodeToString(validPNGData()),
+						"width":        144,
+						"height":       90,
+						"pixel_ratio":  2.0,
+					})),
+				},
+			}
+		default:
+			return rpcResponse{Error: "unexpected method: " + method}
+		}
+	})
+
+	s := NewScreenshotter(t.TempDir(), "android", serverURL, t.TempDir())
+	result, err := s.Capture()
+	if err != nil {
+		t.Fatalf("Capture() error = %v", err)
+	}
+	if result.Width != 144 || result.Height != 90 {
+		t.Fatalf("unexpected dimensions: %+v", result)
+	}
+}
+
+func TestCaptureFlutterFallsBackToExtensionOnInvalidPNG(t *testing.T) {
+	fakeFlutter := writeFakeFlutter(t, `#!/bin/sh
+out=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--out" ]; then
+    out="$arg"
+    break
+  fi
+  prev="$arg"
+done
+printf 'skiapict-invalid' > "$out"
+exit 0
+`)
+	t.Setenv("PATH", filepath.Dir(fakeFlutter)+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	serverURL := startFakeVMServiceServer(t, func(method string, _ map[string]any) rpcResponse {
+		switch method {
+		case "getVM":
+			return rpcResponse{
+				Result: map[string]any{
+					"isolates": []map[string]any{
+						{"id": "isolates/1", "name": "main"},
+					},
+				},
+			}
+		case "ext.flarness.captureScreenshot":
+			return rpcResponse{
+				Result: map[string]any{
+					"result": string(mustJSON(t, map[string]any{
+						"status":       "ok",
+						"format":       "png",
+						"image_base64": base64.StdEncoding.EncodeToString(validPNGData()),
+						"width":        200,
+						"height":       100,
+						"pixel_ratio":  2.0,
+					})),
+				},
+			}
+		default:
+			return rpcResponse{Error: "unexpected method: " + method}
+		}
+	})
+
+	s := NewScreenshotter(t.TempDir(), "linux", serverURL, t.TempDir())
+	result, err := s.Capture()
+	if err != nil {
+		t.Fatalf("Capture() error = %v", err)
+	}
+	if result.Width != 200 || result.Height != 100 {
+		t.Fatalf("unexpected dimensions: %+v", result)
+	}
+}
+
 type rpcResponse struct {
 	Result any
 	Error  string
@@ -417,4 +516,14 @@ func validPNGData() []byte {
 		0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00,
 		0x00, 0x00, 'I', 'E', 'N', 'D', 0xae, 'B', 0x60, 0x82,
 	}
+}
+
+func writeFakeFlutter(t *testing.T, script string) string {
+	t.Helper()
+	binDir := t.TempDir()
+	path := filepath.Join(binDir, "flutter")
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake flutter: %v", err)
+	}
+	return path
 }

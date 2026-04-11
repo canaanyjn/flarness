@@ -200,7 +200,7 @@ flarness stop --session <session>
 - If the daemon for a session is not running, call `start` for that project instead of retrying other commands.
 - For web devices, screenshot uses CDP internally.
 - For macOS debug apps that initialize `flarness_plugin`, screenshot captures Flutter-rendered content through the app-side VM service extension.
-- For other supported non-web platforms, Flarness falls back to Flutter's screenshot command.
+- For other supported non-web platforms, Flarness tries Flutter's screenshot command first and falls back to the same app-side VM service extension when available.
 - Keep the project path absolute when working across multiple repos to avoid ambiguity.
 
 ## Common log queries

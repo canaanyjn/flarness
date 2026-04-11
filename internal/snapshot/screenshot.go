@@ -161,6 +161,12 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if s.debugURL != "" {
+			extensionResult, extensionErr := s.captureServiceExtension(outPath, s.device)
+			if extensionErr == nil {
+				return extensionResult, nil
+			}
+		}
 		nativeResult, nativeErr := s.captureNativeDesktop(outPath, err, output)
 		if nativeErr == nil {
 			return nativeResult, nil
@@ -189,6 +195,13 @@ func (s *Screenshotter) captureFlutter(outPath string) (*ScreenshotResult, error
 		return result, nil
 	}
 
+	if s.debugURL != "" {
+		extensionResult, extensionErr := s.captureServiceExtension(outPath, s.device)
+		if extensionErr == nil {
+			return extensionResult, nil
+		}
+	}
+
 	fallbackResult, fallbackOutput, fallbackErr := s.captureFlutterFallback(outPath)
 	if fallbackErr == nil {
 		return fallbackResult, nil
@@ -201,7 +214,10 @@ func (s *Screenshotter) captureMacOS(outPath string) (*ScreenshotResult, error) 
 	if s.debugURL == "" {
 		return nil, fmt.Errorf("no debug URL available for macOS screenshot")
 	}
+	return s.captureServiceExtension(outPath, "macOS")
+}
 
+func (s *Screenshotter) captureServiceExtension(outPath, context string) (*ScreenshotResult, error) {
 	client := vmservice.NewClient(s.debugURL)
 	raw, err := client.CallExtension("ext.flarness.captureScreenshot", nil, 20*time.Second)
 	if err != nil {
@@ -232,7 +248,7 @@ func (s *Screenshotter) captureMacOS(outPath string) (*ScreenshotResult, error) 
 
 	imgData, err := base64.StdEncoding.DecodeString(payload.ImageBase64)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode macOS screenshot: %w", err)
+		return nil, fmt.Errorf("failed to decode %s screenshot: %w", context, err)
 	}
 	if !isPNGData(imgData) {
 		return nil, fmt.Errorf("captureScreenshot returned non-PNG data: %s", detectScreenshotFormat(imgData))
