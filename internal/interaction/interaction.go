@@ -494,33 +494,33 @@ func (it *Interactor) ensureSemantics(conn *websocket.Conn, isolateID string) er
 
 func (it *Interactor) getSemanticsTree(conn *websocket.Conn, isolateID string) ([]*SemanticsNode, error) {
 	if nodes, err := it.getSemanticsTreeFromPlugin(conn, isolateID); err == nil {
+		if inverseNodes, inverseErr := it.getNativeSemanticsTree(
+			conn,
+			isolateID,
+			"ext.flutter.debugDumpSemanticsTreeInInverseHitTestOrder",
+		); inverseErr == nil && len(inverseNodes) > 0 {
+			return mergeSemanticsForests(nodes, inverseNodes), nil
+		}
 		return nodes, nil
 	} else if !isMissingFlarnessExtensionError(err) {
 		return nil, err
 	}
 
-	result, err := it.sendRPC(conn, "ext.flutter.debugDumpSemanticsTreeInTraversalOrder", map[string]any{
-		"isolateId": isolateID,
-	})
+	nodes, err := it.getNativeSemanticsTree(
+		conn,
+		isolateID,
+		"ext.flutter.debugDumpSemanticsTreeInTraversalOrder",
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get semantics tree: %w", err)
+		return nil, err
 	}
-
-	var dumpResp struct {
-		Data string `json:"data"`
+	if inverseNodes, inverseErr := it.getNativeSemanticsTree(
+		conn,
+		isolateID,
+		"ext.flutter.debugDumpSemanticsTreeInInverseHitTestOrder",
+	); inverseErr == nil && len(inverseNodes) > 0 {
+		return mergeSemanticsForests(nodes, inverseNodes), nil
 	}
-	if err := json.Unmarshal(result, &dumpResp); err != nil {
-		return nil, fmt.Errorf("failed to parse semantics response: %w", err)
-	}
-	if dumpResp.Data == "" {
-		return nil, fmt.Errorf("semantics tree is empty — ensure semantics are enabled in the app")
-	}
-	if reason := semanticsUnavailableReason(dumpResp.Data); reason != "" {
-		return nil, fmt.Errorf(reason)
-	}
-
-	nodes := parseSemanticsTreeDump(dumpResp.Data)
-	resolveGlobalRects(nodes, 0, 0)
 	return nodes, nil
 }
 
@@ -727,6 +727,32 @@ func (it *Interactor) getSemanticsTreeFromPlugin(conn *websocket.Conn, isolateID
 	return payload.Nodes, nil
 }
 
+func (it *Interactor) getNativeSemanticsTree(conn *websocket.Conn, isolateID string, method string) ([]*SemanticsNode, error) {
+	result, err := it.sendRPC(conn, method, map[string]any{
+		"isolateId": isolateID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get semantics tree: %w", err)
+	}
+
+	var dumpResp struct {
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(result, &dumpResp); err != nil {
+		return nil, fmt.Errorf("failed to parse semantics response: %w", err)
+	}
+	if dumpResp.Data == "" {
+		return nil, fmt.Errorf("semantics tree is empty — ensure semantics are enabled in the app")
+	}
+	if reason := semanticsUnavailableReason(dumpResp.Data); reason != "" {
+		return nil, fmt.Errorf(reason)
+	}
+
+	nodes := parseSemanticsTreeDump(dumpResp.Data)
+	resolveGlobalRects(nodes, 0, 0)
+	return nodes, nil
+}
+
 func decodeSemanticsDumpPayload(raw json.RawMessage) (*semanticsDumpPayload, error) {
 	var envelope struct {
 		Result string `json:"result"`
@@ -783,6 +809,66 @@ func resolveGlobalRects(nodes []*SemanticsNode, parentLeft, parentTop float64) {
 		n.Rect.Top += parentTop
 		resolveGlobalRects(n.Children, n.Rect.Left, n.Rect.Top)
 	}
+}
+
+func mergeSemanticsForests(primary, supplemental []*SemanticsNode) []*SemanticsNode {
+	merged := make([]*SemanticsNode, 0, len(primary)+len(supplemental))
+	seen := make(map[int]*SemanticsNode, len(primary)+len(supplemental))
+
+	appendNode := func(node *SemanticsNode) {
+		if existing, ok := seen[node.ID]; ok {
+			mergeSemanticsNode(existing, node)
+			return
+		}
+		seen[node.ID] = node
+		merged = append(merged, node)
+	}
+
+	for _, node := range primary {
+		appendNode(node)
+	}
+	for _, node := range supplemental {
+		appendNode(node)
+	}
+	return merged
+}
+
+func mergeSemanticsNode(primary, supplemental *SemanticsNode) {
+	if primary.Label == "" {
+		primary.Label = supplemental.Label
+	}
+	if primary.Value == "" {
+		primary.Value = supplemental.Value
+	}
+	if primary.Hint == "" {
+		primary.Hint = supplemental.Hint
+	}
+	if primary.Rect == (Rect{}) {
+		primary.Rect = supplemental.Rect
+	}
+	primary.Actions = mergeStringLists(primary.Actions, supplemental.Actions)
+	primary.Flags = mergeStringLists(primary.Flags, supplemental.Flags)
+	primary.Children = mergeSemanticsForests(primary.Children, supplemental.Children)
+}
+
+func mergeStringLists(primary, supplemental []string) []string {
+	merged := make([]string, 0, len(primary)+len(supplemental))
+	seen := make(map[string]struct{}, len(primary)+len(supplemental))
+
+	appendAll := func(items []string) {
+		for _, item := range items {
+			key := strings.ToLower(item)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, item)
+		}
+	}
+
+	appendAll(primary)
+	appendAll(supplemental)
+	return merged
 }
 
 func parseSemanticsTreeDump(dump string) []*SemanticsNode {

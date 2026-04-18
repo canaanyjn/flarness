@@ -81,6 +81,44 @@ void main() {
     ]);
     FlarnessPluginBinding.debugResetForTest();
   });
+
+  test('merges traversal and inverse-hit-test child ids', () {
+    expect(
+      FlarnessPluginBinding.debugMergeSemanticsChildIdsForTest(
+        <int>[10, 20],
+        <int>[20, 30, 10, 40],
+      ),
+      <int>[10, 20, 30, 40],
+    );
+  });
+
+  testWidgets('collects synthetic visible text labels', (
+    WidgetTester tester,
+  ) async {
+    FlarnessPluginBinding.ensureInitialized();
+    await tester.pumpWidget(
+      const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Column(
+          children: <Widget>[
+            Text('Members'),
+            Text.rich(
+              TextSpan(
+                text: 'CAA',
+                children: <InlineSpan>[TextSpan(text: ' Agent')],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final labels = FlarnessPluginBinding.debugCollectSyntheticLabelsForTest();
+    expect(labels, contains('Members'));
+    expect(labels, contains('CAA Agent'));
+    FlarnessPluginBinding.debugResetForTest();
+  });
 }
 
 const List<int> _pngSignature = <int>[

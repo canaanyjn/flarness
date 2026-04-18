@@ -64,6 +64,22 @@ class FlarnessPluginBinding {
       _selectScreenshotRenderView(renderViews);
 
   @visibleForTesting
+  static List<int> debugMergeSemanticsChildIdsForTest(
+    List<int> traversalOrder,
+    List<int> inverseHitTestOrder,
+  ) =>
+      _mergeSemanticsChildIds(traversalOrder, inverseHitTestOrder);
+
+  @visibleForTesting
+  static List<String> debugCollectSyntheticLabelsForTest() {
+    final labels = <String>[];
+    for (final root in _collectSyntheticTextRoots()) {
+      _visitSerializedLabels(root, labels);
+    }
+    return labels;
+  }
+
+  @visibleForTesting
   static void debugResetForTest() {
     _semanticsHandle?.dispose();
     _semanticsHandle = null;
@@ -136,8 +152,8 @@ class FlarnessPluginBinding {
         );
       }
 
-      final root = owner.rootSemanticsNode;
-      if (root == null) {
+      final roots = _collectSemanticsRoots(owner);
+      if (roots.isEmpty) {
         return _error(
           'semantics tree unavailable; ensure flarness_plugin is initialized after WidgetsFlutterBinding',
         );
@@ -145,7 +161,10 @@ class FlarnessPluginBinding {
 
       final payload = <String, Object?>{
         'status': 'ok',
-        'nodes': [_serializeSemanticsNode(root)],
+        'nodes': <Map<String, Object?>>[
+          ...roots.map(_serializeSemanticsNode),
+          ..._collectSyntheticTextRoots(),
+        ],
       };
       return _ok(payload);
     } catch (error, stackTrace) {
@@ -716,9 +735,108 @@ class FlarnessPluginBinding {
     return _pointerCounter;
   }
 
+  static List<SemanticsNode> _collectSemanticsRoots(SemanticsOwner owner) {
+    final roots = <SemanticsNode>[];
+    final seenIds = <int>{};
+
+    for (final RenderView renderView in RendererBinding.instance.renderViews) {
+      final SemanticsNode? root = renderView.debugSemantics;
+      if (root != null && seenIds.add(root.id)) {
+        roots.add(root);
+      }
+    }
+
+    final SemanticsNode? fallbackRoot = owner.rootSemanticsNode;
+    if (fallbackRoot != null && seenIds.add(fallbackRoot.id)) {
+      roots.add(fallbackRoot);
+    }
+
+    return roots;
+  }
+
+  static List<Map<String, Object?>> _collectSyntheticTextRoots() {
+    final Element? rootElement = WidgetsBinding.instance.rootElement;
+    if (rootElement == null) {
+      return const <Map<String, Object?>>[];
+    }
+
+    final viewportRects = RendererBinding.instance.renderViews
+        .map((RenderView view) => ui.Offset.zero & view.size)
+        .where((ui.Rect rect) => rect.width > 0 && rect.height > 0)
+        .toList(growable: false);
+    if (viewportRects.isEmpty) {
+      return const <Map<String, Object?>>[];
+    }
+
+    final syntheticChildren = <Map<String, Object?>>[];
+    final seenKeys = <String>{};
+    var nextSyntheticId = -2000000;
+
+    void visit(Element element) {
+      final String? label = _extractSyntheticLabel(element.widget);
+      final ui.Rect? rect = _extractGlobalRect(element);
+      if (label != null &&
+          rect != null &&
+          _isVisibleSyntheticRect(rect, viewportRects)) {
+        final key =
+            '$label:${rect.left.round()}:${rect.top.round()}:${rect.width.round()}:${rect.height.round()}';
+        if (seenKeys.add(key)) {
+          syntheticChildren.add(
+            _serializeSyntheticNode(
+              id: nextSyntheticId--,
+              label: label,
+              rect: rect,
+            ),
+          );
+        }
+      }
+      element.visitChildElements(visit);
+    }
+
+    visit(rootElement);
+
+    if (syntheticChildren.isEmpty) {
+      return const <Map<String, Object?>>[];
+    }
+
+    final ui.Rect unionRect = viewportRects.reduce(_unionRects);
+    return <Map<String, Object?>>[
+      <String, Object?>{
+        'id': -1000000,
+        'label': '',
+        'value': '',
+        'hint': '',
+        'rect': <String, Object?>{
+          'left': unionRect.left,
+          'top': unionRect.top,
+          'width': unionRect.width,
+          'height': unionRect.height,
+        },
+        'actions': const <String>[],
+        'flags': const <String>['syntheticRoot'],
+        'children': syntheticChildren,
+      },
+    ];
+  }
+
   static Map<String, Object?> _serializeSemanticsNode(SemanticsNode node) {
     final rect = node.rect;
     final data = node.getSemanticsData();
+    final traversalChildren = node.debugListChildrenInOrder(
+      DebugSemanticsDumpOrder.traversalOrder,
+    );
+    final inverseHitTestChildren = node.debugListChildrenInOrder(
+      DebugSemanticsDumpOrder.inverseHitTest,
+    );
+    final mergedChildIds = _mergeSemanticsChildIds(
+      traversalChildren.map((SemanticsNode child) => child.id).toList(),
+      inverseHitTestChildren.map((SemanticsNode child) => child.id).toList(),
+    );
+    final childrenById = <int, SemanticsNode>{
+      for (final child in traversalChildren) child.id: child,
+      for (final child in inverseHitTestChildren) child.id: child,
+    };
+
     return <String, Object?>{
       'id': node.id,
       'label': node.label,
@@ -732,10 +850,129 @@ class FlarnessPluginBinding {
       },
       'actions': _serializeActions(data.actions),
       'flags': data.flagsCollection.toStrings(),
-      'children': node
-          .debugListChildrenInOrder(DebugSemanticsDumpOrder.traversalOrder)
+      'children': mergedChildIds
+          .map((int childId) => childrenById[childId]!)
           .map(_serializeSemanticsNode)
           .toList(growable: false),
+    };
+  }
+
+  static List<int> _mergeSemanticsChildIds(
+    List<int> traversalOrder,
+    List<int> inverseHitTestOrder,
+  ) {
+    final merged = <int>[];
+    final seen = <int>{};
+
+    void appendAll(List<int> ids) {
+      for (final id in ids) {
+        if (seen.add(id)) {
+          merged.add(id);
+        }
+      }
+    }
+
+    appendAll(traversalOrder);
+    appendAll(inverseHitTestOrder);
+    return merged;
+  }
+
+  static void _visitSerializedLabels(
+    Map<String, Object?> node,
+    List<String> labels,
+  ) {
+    final Object? label = node['label'];
+    if (label is String && label.isNotEmpty) {
+      labels.add(label);
+    }
+
+    final Object? children = node['children'];
+    if (children is List<Object?>) {
+      for (final child in children) {
+        if (child is Map<String, Object?>) {
+          _visitSerializedLabels(child, labels);
+        }
+      }
+    }
+  }
+
+  static String? _extractSyntheticLabel(Widget widget) {
+    if (widget is Text) {
+      final raw = widget.data ?? widget.textSpan?.toPlainText();
+      return _normalizeSyntheticLabel(raw);
+    }
+    if (widget is RichText) {
+      return _normalizeSyntheticLabel(widget.text.toPlainText());
+    }
+    return null;
+  }
+
+  static String? _normalizeSyntheticLabel(String? raw) {
+    if (raw == null) {
+      return null;
+    }
+    final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+    return normalized;
+  }
+
+  static ui.Rect? _extractGlobalRect(Element element) {
+    final RenderObject? renderObject = element.renderObject;
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      return null;
+    }
+    final ui.Offset origin = renderObject.localToGlobal(ui.Offset.zero);
+    final ui.Rect rect = origin & renderObject.size;
+    if (!rect.isFinite || rect.width <= 1 || rect.height <= 1) {
+      return null;
+    }
+    return rect;
+  }
+
+  static bool _isVisibleSyntheticRect(
+    ui.Rect rect,
+    List<ui.Rect> viewportRects,
+  ) {
+    for (final viewportRect in viewportRects) {
+      if (rect.overlaps(viewportRect)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static ui.Rect _unionRects(ui.Rect left, ui.Rect right) {
+    return ui.Rect.fromLTRB(
+      left.left < right.left ? left.left : right.left,
+      left.top < right.top ? left.top : right.top,
+      left.right > right.right ? left.right : right.right,
+      left.bottom > right.bottom ? left.bottom : right.bottom,
+    );
+  }
+
+  static Map<String, Object?> _serializeSyntheticNode({
+    required int id,
+    required String label,
+    required ui.Rect rect,
+  }) {
+    return <String, Object?>{
+      'id': id,
+      'label': label,
+      'value': '',
+      'hint': '',
+      'rect': <String, Object?>{
+        'left': rect.left,
+        'top': rect.top,
+        'width': rect.width,
+        'height': rect.height,
+      },
+      'actions': const <String>[],
+      'flags': const <String>['syntheticText'],
+      'children': const <Map<String, Object?>>[],
     };
   }
 

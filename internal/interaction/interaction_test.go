@@ -252,6 +252,43 @@ func TestParseSemanticsTreeDump(t *testing.T) {
 	}
 }
 
+func TestMergeSemanticsForests(t *testing.T) {
+	primary := []*SemanticsNode{
+		{
+			ID:      0,
+			Label:   "root",
+			Actions: []string{"tap"},
+			Children: []*SemanticsNode{
+				{ID: 1, Label: "content"},
+			},
+		},
+	}
+	supplemental := []*SemanticsNode{
+		{
+			ID:    0,
+			Flags: []string{"scopesRoute"},
+			Children: []*SemanticsNode{
+				{ID: 2, Label: "sidebar"},
+			},
+		},
+	}
+
+	merged := mergeSemanticsForests(primary, supplemental)
+	if len(merged) != 1 {
+		t.Fatalf("expected 1 merged root, got %d", len(merged))
+	}
+	root := merged[0]
+	if len(root.Children) != 2 {
+		t.Fatalf("expected 2 merged children, got %d", len(root.Children))
+	}
+	if root.Children[0].ID != 1 || root.Children[1].ID != 2 {
+		t.Fatalf("unexpected child order after merge: %+v", root.Children)
+	}
+	if len(root.Flags) != 1 || root.Flags[0] != "scopesRoute" {
+		t.Fatalf("expected merged flags, got %+v", root.Flags)
+	}
+}
+
 type errString string
 
 func (e errString) Error() string {
