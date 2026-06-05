@@ -2,6 +2,7 @@ package process
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -57,6 +58,14 @@ type Manager struct {
 	project        string
 	device         string
 	flutterCommand []string
+
+	// appID is the Flutter daemon application id, captured from the
+	// `app.start` machine event. Required to issue `app.restart` JSON-RPC
+	// commands for hot reload / restart.
+	appID string
+
+	// rpcID is a monotonically increasing id for daemon JSON-RPC commands.
+	rpcID int
 
 	// Callback for each line of output (for parser to consume).
 	onEvent EventCallback
@@ -179,43 +188,71 @@ func (m *Manager) readLines(source string, r io.Reader) {
 	}
 }
 
-// SendReload sends a hot reload command ("r") to flutter's stdin.
+// SetAppID records the Flutter daemon application id from the `app.start`
+// machine event. Without it, `app.restart` JSON-RPC commands cannot be issued.
+func (m *Manager) SetAppID(appID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.appID = appID
+}
+
+// AppID returns the captured Flutter daemon application id.
+func (m *Manager) AppID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.appID
+}
+
+// SendReload triggers a hot reload via the Flutter daemon protocol.
 func (m *Manager) SendReload() error {
+	return m.sendRestartCommand(false)
+}
+
+// SendRestart triggers a hot restart via the Flutter daemon protocol.
+func (m *Manager) SendRestart() error {
+	return m.sendRestartCommand(true)
+}
+
+// sendRestartCommand issues an `app.restart` JSON-RPC command on flutter's
+// stdin. `flutter run --machine` does not honor the interactive `r`/`R`
+// keypresses (its terminal handler is disabled in machine mode); reloads must
+// be driven through the daemon JSON-RPC protocol instead.
+func (m *Manager) sendRestartCommand(fullRestart bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.state != StateRunning {
 		return fmt.Errorf("cannot reload: process is %s", m.state)
 	}
+	if m.appID == "" {
+		return fmt.Errorf("cannot reload: flutter app id not available yet")
+	}
+
+	m.rpcID++
+	command := []map[string]any{
+		{
+			"id":     m.rpcID,
+			"method": "app.restart",
+			"params": map[string]any{
+				"appId":       m.appID,
+				"fullRestart": fullRestart,
+				"pause":       false,
+				"reason":      "manual",
+			},
+		},
+	}
+	payload, err := json.Marshal(command)
+	if err != nil {
+		return fmt.Errorf("failed to encode reload command: %w", err)
+	}
+	payload = append(payload, '\n')
 
 	m.state = StateReloading
 	m.reloadResult = make(chan ReloadResult, 1)
 
-	_, err := m.stdin.Write([]byte("r"))
-	if err != nil {
+	if _, err := m.stdin.Write(payload); err != nil {
 		m.state = StateRunning
 		return fmt.Errorf("failed to send reload: %w", err)
-	}
-
-	return nil
-}
-
-// SendRestart sends a hot restart command ("R") to flutter's stdin.
-func (m *Manager) SendRestart() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.state != StateRunning {
-		return fmt.Errorf("cannot restart: process is %s", m.state)
-	}
-
-	m.state = StateReloading
-	m.reloadResult = make(chan ReloadResult, 1)
-
-	_, err := m.stdin.Write([]byte("R"))
-	if err != nil {
-		m.state = StateRunning
-		return fmt.Errorf("failed to send restart: %w", err)
 	}
 
 	return nil

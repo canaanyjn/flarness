@@ -213,6 +213,13 @@ func (d *Daemon) OnLog(entry model.LogEntry) {
 // OnStateChange handles state transitions from the parser.
 func (d *Daemon) OnStateChange(event string, data map[string]string) {
 	switch event {
+	case "app.start":
+		// Capture the Flutter daemon application id so hot reload / restart
+		// can be driven through the `app.restart` JSON-RPC command.
+		if d.procMgr != nil && data != nil && data["appId"] != "" {
+			d.procMgr.SetAppID(data["appId"])
+		}
+
 	case "app.started":
 		if d.procMgr != nil {
 			d.procMgr.SetState(process.StateRunning)
