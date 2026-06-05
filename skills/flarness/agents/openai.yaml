@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flarness"
+  short_description: "Drive Flutter apps through the Flarness CLI"
+  default_prompt: "Use $skill-flarness to operate this Flutter app through Flarness."

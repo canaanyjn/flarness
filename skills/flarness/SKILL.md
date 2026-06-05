@@ -17,6 +17,7 @@ The important operating model is:
 - Each Flutter project gets its own Flarness daemon session.
 - `start` returns a stable `session` id derived from the project path.
 - You usually start once per project, then issue follow-up commands against that session.
+- `--session` is optional. When omitted, flarness derives the session from the Flutter app root containing the current working directory (it walks up to the nearest `pubspec.yaml` with `lib/main.dart`/a platform dir, skipping nested package pubspecs). So running a command from inside a project — or any subdirectory of it — targets that project's daemon automatically (requires flarness ≥ v0.2.3).
 - The daemon keeps the Flutter VM service alive and exposes higher-level actions like reload, analyze, inspect, screenshot, logs, and grouped interaction commands.
 
 ## Preconditions
@@ -60,15 +61,25 @@ flarness help
 
 ## Default workflow
 
-1. Start Flarness against the target Flutter project.
-2. Capture the returned `session` id from `start`.
-3. Use `status --session <session>` until the Flutter process is `running`.
+1. Start Flarness against the target Flutter project (`flarness app start` from inside the project, or `--project <path>`).
+2. Note the `session` id from `start` (optional — see below). Prefer running subsequent commands from inside the project directory so `--session` can be omitted and the cwd default targets the right daemon.
+3. Use `status` until the Flutter process is `running`.
 4. Make code changes in the Flutter app.
-5. Run `reload --session <session>` for incremental UI changes.
-6. Use `screenshot`, `inspect`, and `semantics` with the same `--session`.
+5. Run `reload` for incremental UI changes.
+6. Use `screenshot`, `inspect`, and `semantics`.
 7. Use `logs` or `analyze` when reload fails or the UI behaves incorrectly.
-8. Use `restart --session <session>` when app state is too stale for a hot reload to recover cleanly.
-9. Use `stop --session <session>` when you are done with that project.
+8. Use `restart` when app state is too stale for a hot reload to recover cleanly.
+9. Use `stop` when you are done with that project.
+
+(Each command above accepts `--session <id>` to target a specific daemon; when omitted it resolves the session from the current directory's project root. The `--session <session>` shown in later examples is therefore optional when you run from inside the project.)
+
+## Multi-worktree sessions
+
+- The safest pattern is to **omit `--session` and run commands from inside the worktree you are editing** (or any subdirectory of it). flarness derives the session from that worktree's app root, so each worktree maps to its own daemon and you cannot accidentally drive a sibling checkout. This is the recommended default for multi-worktree repos.
+- The opposite is the main hazard: a **remembered/hardcoded `--session` id can point at a stale or wrong worktree**. If you pass `--session` explicitly, do not trust it blindly — verify with `flarness app status --session <session>` and confirm the returned `project` path is the exact worktree you are editing.
+- `cd` into the worktree's app directory before driving it; confirm with `flarness app status` (no `--session`) that `project` is the path you expect, then proceed without `--session`.
+- Per-worktree project aliases (e.g. `p2-mobile-7ab8` in `~/.flarness/config.yaml`) are still available for targeting a worktree from elsewhere, but with the cwd default they are rarely necessary.
+- If a session points at the wrong worktree, stop using that id immediately and fall back to the cwd default (or an explicit absolute `--project`/alias) for the correct worktree.
 
 ## Core commands
 
@@ -174,6 +185,8 @@ flarness app stop --session <session>
 - Use `flarness interact wait --session <session>` when the next UI state is expected to appear asynchronously.
 - After every write or navigation action, run `flarness observe semantics --session <session>` again to verify the UI actually changed.
 - Use `flarness observe inspect --session <session>` only when interaction succeeds but the structure or layout still needs explanation.
+- For covered panels, icon-only controls, clipped text, overlays, and other hard-to-hit desktop UI, prefer semantics-targeted actions such as `flarness interact tap --text "Return to previous panel"` over guessed coordinates.
+- Use coordinate taps only after semantics cannot identify the target or when the test is specifically about hit geometry.
 
 ## How to use results
 
@@ -186,17 +199,20 @@ flarness app stop --session <session>
 ## Verifying success
 
 - Do not treat `status: ok` from an interaction command as sufficient proof that the UI changed.
+- Do not treat a screenshot as sufficient proof that an interaction works. Screenshots prove visual state; semantics, real interaction commands, and logs prove behavior.
 - After create/update actions, verify via `semantics`, status banners, or visible button-label changes.
 - After state transitions, confirm the action label changed as expected, for example `Start` to `Complete` or `Complete` to `Reopen`.
 - After text entry, confirm the expected value appears in the focused field or in the resulting status message.
+- For UI changes, use a full local loop: static analysis or targeted Flutter tests, real Flarness interaction, a post-action screenshot or semantics check, and recent error logs.
 
 ## Practical rules
 
 - Start once per session instead of relaunching for every action.
-- When working across multiple projects, keep the correct `session` attached to each command.
+- When working across multiple projects, either run each command from inside its project directory (cwd default picks the right session) or attach the correct explicit `--session` to each command.
 - Default to `reload`; escalate to `restart` only when necessary.
+- If `reload` or `restart` hangs, stops producing output, or leaves `flutter_state` stuck at `reloading`, do not stack more reload/restart commands. Inspect status, then perform a clean restart by stopping the session or killing the recorded Flutter pid before starting from the correct project.
 - Keep commands atomic: call `screenshot` and `inspect` separately when both are needed.
-- If you do not know the target session, run `flarness sessions list`.
+- If you do not know the target session, run the command from inside the project directory (cwd default), or run `flarness sessions list` to see all sessions and their `project` paths.
 - If the daemon for a session is not running, call `start` for that project instead of retrying other commands.
 - For web devices, screenshot uses CDP internally.
 - For macOS debug apps that initialize `flarness_plugin`, screenshot captures Flutter-rendered content through the app-side VM service extension.
@@ -215,6 +231,8 @@ flarness app stop --session <session>
 
 - Error saying daemon is not running:
   run `flarness sessions list` to confirm the target session, then `flarness app start` in the Flutter project if needed.
+- `status` reports `flutter_state: stopped` or `flutter_state: reloading` while the daemon session still appears running:
+  treat the session as stale. Run `flarness app status --session <session>` to capture the `pid` and `project`, stop the session if possible, kill the stale pid if it still exists, then start again from the correct project path.
 - `start` fails during startup:
   inspect the daemon log path mentioned in the error; Flarness now waits for daemon IPC and Flutter `running` state before reporting success.
 - Error saying no `pubspec.yaml`:
@@ -245,6 +263,19 @@ flarness app stop --session <session>
 - If UI state becomes inconsistent after several actions, prefer `restart` over piling on more taps.
 - If the daemon socket is unavailable, confirm the target session with `sessions list`, then use `start` instead of retrying subcommands blindly.
 - If runtime behavior is unclear, inspect `logs` before changing the UI again.
+- If a session is stale or points at the wrong worktree, recover by selecting the correct project first, not by retrying commands against the old session.
+
+## Flutter UI verification checklist
+
+For significant Flutter UI work, especially desktop/macOS layout and interaction changes:
+
+1. Confirm the Flarness session project path matches the current worktree.
+2. Run the relevant static checks or targeted Flutter tests outside Flarness when they are faster or more precise.
+3. Start or reload the app from the correct project.
+4. Use `semantics` to identify interactive targets.
+5. Drive the real interaction with `interact`.
+6. Verify the resulting state with screenshot, semantics, or both.
+7. Query recent errors with `flarness diagnose logs --session <session> --level error --since 5m`.
 
 ## Good defaults for an agent using this skill
 
