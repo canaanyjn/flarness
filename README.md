@@ -134,10 +134,18 @@ observe semantics = automation/interaction view (labels, actions, focus, bounds)
 
 ### Drive the UI
 ```bash
-flarness interact tap --session <session> --text "Login"
-flarness interact type --session <session> --value "hello@example.com"
-flarness interact wait --session <session> --text "Success"
+flarness interact tap --text "Login"
+flarness interact tap --id 21          # target a node by its 'observe semantics' id
+flarness interact type --value "hello@example.com"
+flarness interact wait --text "Success"
 ```
+
+Targets can be found by `--text`, `--type`, `--id` (the numeric node id from
+`observe semantics`), or `--x/--y` coordinates. `--id` is the most reliable way
+to hit icon-only controls and text fields that have no stable label. The rects
+in `observe semantics` are absolute (global, logical) coordinates, so a node's
+center is directly tappable. `tap`, `swipe`, `scroll`, and `longpress` all
+accept `--id`.
 
 ### Get AI-readable help
 ```bash

@@ -186,6 +186,8 @@ flarness app stop --session <session>
 - After every write or navigation action, run `flarness observe semantics --session <session>` again to verify the UI actually changed.
 - Use `flarness observe inspect --session <session>` only when interaction succeeds but the structure or layout still needs explanation.
 - For covered panels, icon-only controls, clipped text, overlays, and other hard-to-hit desktop UI, prefer semantics-targeted actions such as `flarness interact tap --text "Return to previous panel"` over guessed coordinates.
+- For controls with no stable label (back chevrons, send buttons, text fields), target the numeric node id from `observe semantics`: `flarness interact tap --id 21`. `--id` is supported by `tap`, `swipe`, `scroll`, and `longpress`. Re-run `observe semantics` right before tapping, since ids change after navigation/rebuild.
+- `observe semantics` rects are absolute (global, logical) coordinates, so a node's center maps directly to a tap location.
 - Use coordinate taps only after semantics cannot identify the target or when the test is specifically about hit geometry.
 
 ## How to use results
