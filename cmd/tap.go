@@ -8,15 +8,17 @@ import (
 var tapCmd = &cobra.Command{
 	Use:   "tap",
 	Short: "Tap on a UI element",
-	Long: `Tap on a Flutter widget found by text, type, or coordinates.
+	Long: `Tap on a Flutter widget found by semantics id, text, type, or coordinates.
 
 Examples:
   flarness interact tap --text "Add Todo"
   flarness interact tap --type "isButton" --index 2
+  flarness interact tap --id 21          # id from 'observe semantics'
   flarness interact tap --x 400 --y 300`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
+		id, _ := cmd.Flags().GetInt("id")
 		index, _ := cmd.Flags().GetInt("index")
 		x, _ := cmd.Flags().GetFloat64("x")
 		y, _ := cmd.Flags().GetFloat64("y")
@@ -27,6 +29,9 @@ Examples:
 		if x >= 0 && y >= 0 {
 			finderArgs["x"] = x
 			finderArgs["y"] = y
+		} else if id > 0 {
+			finderArgs["by"] = "id"
+			finderArgs["id"] = float64(id)
 		} else if text != "" {
 			finderArgs["by"] = "text"
 			finderArgs["value"] = text
@@ -34,7 +39,7 @@ Examples:
 			finderArgs["by"] = "type"
 			finderArgs["value"] = typ
 		} else {
-			printError("provide --x/--y or one of --text, --type")
+			printError("provide --x/--y or one of --id, --text, --type")
 			return nil
 		}
 
@@ -62,6 +67,7 @@ func init() {
 	addSessionFlag(tapCmd)
 	tapCmd.Flags().String("text", "", "find by label text (partial match)")
 	tapCmd.Flags().String("type", "", "find by widget type/flag")
+	tapCmd.Flags().Int("id", 0, "find by semantics node id (from 'observe semantics')")
 	tapCmd.Flags().Int("index", 0, "0-based index when multiple matches")
 	tapCmd.Flags().Float64("x", -1, "tap by logical x coordinate")
 	tapCmd.Flags().Float64("y", -1, "tap by logical y coordinate")

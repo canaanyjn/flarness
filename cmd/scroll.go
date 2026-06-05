@@ -17,6 +17,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
+		id, _ := cmd.Flags().GetInt("id")
 		dx, _ := cmd.Flags().GetFloat64("dx")
 		dy, _ := cmd.Flags().GetFloat64("dy")
 		index, _ := cmd.Flags().GetInt("index")
@@ -26,14 +27,17 @@ Examples:
 			"dx":    dx,
 			"dy":    dy,
 		}
-		if text != "" {
+		if id > 0 {
+			finderArgs["by"] = "id"
+			finderArgs["id"] = float64(id)
+		} else if text != "" {
 			finderArgs["by"] = "text"
 			finderArgs["value"] = text
 		} else if typ != "" {
 			finderArgs["by"] = "type"
 			finderArgs["value"] = typ
 		} else {
-			printError("one of --text or --type is required")
+			printError("one of --id, --text or --type is required")
 			return nil
 		}
 
@@ -61,6 +65,7 @@ func init() {
 	addSessionFlag(scrollCmd)
 	scrollCmd.Flags().String("text", "", "find by label text (partial match)")
 	scrollCmd.Flags().String("type", "", "find by widget type/flag")
+	scrollCmd.Flags().Int("id", 0, "find by semantics node id (from 'observe semantics')")
 	scrollCmd.Flags().Float64("dx", 0, "horizontal scroll offset (negative=left)")
 	scrollCmd.Flags().Float64("dy", 0, "vertical scroll offset (negative=up)")
 	scrollCmd.Flags().Int("index", 0, "0-based index when multiple matches")

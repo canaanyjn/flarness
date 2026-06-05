@@ -16,6 +16,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text, _ := cmd.Flags().GetString("text")
 		typ, _ := cmd.Flags().GetString("type")
+		id, _ := cmd.Flags().GetInt("id")
 		duration, _ := cmd.Flags().GetInt("duration")
 		index, _ := cmd.Flags().GetInt("index")
 
@@ -23,14 +24,17 @@ Examples:
 			"index":    float64(index),
 			"duration": float64(duration),
 		}
-		if text != "" {
+		if id > 0 {
+			finderArgs["by"] = "id"
+			finderArgs["id"] = float64(id)
+		} else if text != "" {
 			finderArgs["by"] = "text"
 			finderArgs["value"] = text
 		} else if typ != "" {
 			finderArgs["by"] = "type"
 			finderArgs["value"] = typ
 		} else {
-			printError("one of --text or --type is required")
+			printError("one of --id, --text or --type is required")
 			return nil
 		}
 
@@ -58,6 +62,7 @@ func init() {
 	addSessionFlag(longpressCmd)
 	longpressCmd.Flags().String("text", "", "find by label text (partial match)")
 	longpressCmd.Flags().String("type", "", "find by widget type/flag")
+	longpressCmd.Flags().Int("id", 0, "find by semantics node id (from 'observe semantics')")
 	longpressCmd.Flags().Int("duration", 500, "long press duration in milliseconds")
 	longpressCmd.Flags().Int("index", 0, "0-based index when multiple matches")
 	interactCmd.AddCommand(longpressCmd)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,7 @@ const (
 	FindByText    FinderType = "text"
 	FindByType    FinderType = "type"
 	FindByTooltip FinderType = "tooltip"
+	FindByID      FinderType = "id"
 )
 
 // Finder describes how to locate a target element.
@@ -564,6 +566,11 @@ func (it *Interactor) findNode(conn *websocket.Conn, isolateID string, finder Fi
 
 func finderScore(node *SemanticsNode, finder Finder) int {
 	switch finder.By {
+	case FindByID:
+		if n, err := strconv.Atoi(strings.TrimSpace(finder.Value)); err == nil && n == node.ID {
+			return 2
+		}
+		return 0
 	case FindByText:
 		return textScore(node.Label, finder.Value, node.Value)
 	case FindByTooltip:

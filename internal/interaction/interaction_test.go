@@ -39,6 +39,10 @@ func TestMatchesFinder(t *testing.T) {
 		{"tooltip no match", Finder{By: FindByTooltip, Value: "Long press"}, false},
 		{"type match flag", Finder{By: FindByType, Value: "isButton"}, true},
 		{"type no match", Finder{By: FindByType, Value: "isTextField"}, false},
+		{"id match", Finder{By: FindByID, Value: "1"}, true},
+		{"id match with spaces", Finder{By: FindByID, Value: " 1 "}, true},
+		{"id no match", Finder{By: FindByID, Value: "2"}, false},
+		{"id non-numeric", Finder{By: FindByID, Value: "abc"}, false},
 	}
 
 	for _, tt := range tests {
@@ -48,6 +52,40 @@ func TestMatchesFinder(t *testing.T) {
 				t.Errorf("finderScore()>0 = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFinderByIDScoreAndTraversal(t *testing.T) {
+	// id matches must be exact (score 2) so an id pins exactly one node.
+	node := &SemanticsNode{ID: 42}
+	if got := finderScore(node, Finder{By: FindByID, Value: "42"}); got != 2 {
+		t.Errorf("finderScore(id=42) = %d, want 2", got)
+	}
+	if got := finderScore(node, Finder{By: FindByID, Value: "7"}); got != 0 {
+		t.Errorf("finderScore(id=7) = %d, want 0", got)
+	}
+
+	// findNode must locate a node by id deep in the tree (mirrors how
+	// 'tap --id' resolves the numeric id from 'observe semantics').
+	tree := []*SemanticsNode{
+		{ID: 1, Children: []*SemanticsNode{
+			{ID: 2},
+			{ID: 3, Children: []*SemanticsNode{{ID: 42, Label: "target"}}},
+		}},
+	}
+	var found *SemanticsNode
+	var search func(nodes []*SemanticsNode)
+	search = func(nodes []*SemanticsNode) {
+		for _, n := range nodes {
+			if finderScore(n, Finder{By: FindByID, Value: "42"}) == 2 {
+				found = n
+			}
+			search(n.Children)
+		}
+	}
+	search(tree)
+	if found == nil || found.ID != 42 {
+		t.Fatalf("expected to find node id=42, got %v", found)
 	}
 }
 

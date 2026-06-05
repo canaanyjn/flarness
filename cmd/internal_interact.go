@@ -155,6 +155,11 @@ func parseFinder(args map[string]any) interaction.Finder {
 	if v, ok := args["value"].(string); ok {
 		finder.Value = v
 	}
+	// A by:id finder carries the numeric semantics node id. The daemon
+	// serializes args to JSON, so the id arrives as a float64.
+	if v, ok := args["id"].(float64); ok {
+		finder.Value = fmt.Sprintf("%d", int(v))
+	}
 	if v, ok := args["index"].(float64); ok {
 		finder.Index = int(v)
 	}
