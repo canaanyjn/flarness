@@ -26,9 +26,11 @@ var (
 const (
 	daemonReadyTimeout = 10 * time.Second
 	// flutterReadyTimeout bounds the whole "launch -> running" window. It has to
-	// cover a cold native build (iOS/Android builds alone can exceed 90s) plus
-	// the app reaching first frame, so it is generous.
-	flutterReadyTimeout = 180 * time.Second
+	// cover a cold native build (a clean iOS build with a Rust/native step can
+	// take several minutes) plus the app reaching first frame, so it is very
+	// generous. The loop still fails fast if the daemon or flutter process
+	// exits during startup.
+	flutterReadyTimeout = 600 * time.Second
 	// appStartGrace is a fresh window granted once the VM service debug URL is
 	// observed (i.e. the build finished). app.started — the only event that
 	// flips state to "running" — fires last, after first frame, which can lag on
@@ -75,6 +77,7 @@ var startCmd = &cobra.Command{
 		if len(projectCfg.FlutterCommand) > 0 {
 			flutterCommand = append([]string{}, projectCfg.FlutterCommand...)
 		}
+		flutterCommand = resolveWrapperCommand(flutterCommand, project)
 
 		session := instance.SessionForProject(project)
 		client := ipc.NewClient(session)

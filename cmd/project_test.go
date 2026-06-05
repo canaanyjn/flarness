@@ -74,6 +74,35 @@ func TestResolveProjectRootWalksUpToFlutterApp(t *testing.T) {
 	}
 }
 
+func TestResolveWrapperCommand(t *testing.T) {
+	const project = "/work/worktrees/3e6b/p2/apps/mobile"
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"relative wrapper resolves against project", []string{"scripts/dev.sh", "--flavor"},
+			[]string{filepath.Join(project, "scripts/dev.sh"), "--flavor"}},
+		{"bare command stays a PATH lookup", []string{"flutter"}, []string{"flutter"}},
+		{"absolute path is untouched", []string{"/usr/local/bin/dev.sh"},
+			[]string{"/usr/local/bin/dev.sh"}},
+		{"empty stays empty", nil, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveWrapperCommand(tc.in, project)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len = %d, want %d (%v)", len(got), len(tc.want), got)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

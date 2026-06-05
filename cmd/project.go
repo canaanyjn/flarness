@@ -4,9 +4,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/canaanyjn/flarness/internal/config"
 )
+
+// resolveWrapperCommand resolves a relative wrapper command (for example
+// "scripts/dev.sh") against the resolved project directory so each worktree
+// uses its own build wrapper. A bare command like "flutter" (no path
+// separator) stays a PATH lookup, and an absolute path is used as-is. This
+// prevents a single absolute wrapper configured as the default from building
+// one checkout's code while you work in a different worktree.
+func resolveWrapperCommand(flutterCommand []string, project string) []string {
+	if len(flutterCommand) == 0 {
+		return flutterCommand
+	}
+	out := append([]string{}, flutterCommand...)
+	exe := out[0]
+	if !filepath.IsAbs(exe) && strings.ContainsRune(exe, os.PathSeparator) {
+		out[0] = filepath.Join(project, exe)
+	}
+	return out
+}
 
 func resolveProjectArg(cfg config.Config, raw string) (string, config.ProjectConfig, error) {
 	if raw == "" {
