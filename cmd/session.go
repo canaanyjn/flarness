@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/canaanyjn/flarness/internal/daemon"
+	"github.com/canaanyjn/flarness/internal/instance"
 	"github.com/canaanyjn/flarness/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -11,15 +13,23 @@ import (
 const sessionFlagName = "session"
 
 func addSessionFlag(cmd *cobra.Command) {
-	cmd.Flags().String(sessionFlagName, "", "target flarness session id")
+	cmd.Flags().String(sessionFlagName, "", "target flarness session id (default: the project containing the current directory)")
 }
 
-func requireSession(cmd *cobra.Command) string {
+// resolveSession returns the explicit --session when given, otherwise derives
+// it from the project root containing the current working directory. This makes
+// commands target the worktree you are standing in, so running from inside a
+// git worktree never accidentally drives another checkout's daemon.
+func resolveSession(cmd *cobra.Command) string {
 	session, _ := cmd.Flags().GetString(sessionFlagName)
-	if session == "" {
-		printError("missing required --session; run 'flarness sessions list' or use the session returned by 'flarness app start'")
+	if session != "" {
+		return session
 	}
-	return session
+	cwd, err := os.Getwd()
+	if err != nil {
+		printError("missing --session and cannot determine current directory: " + err.Error())
+	}
+	return instance.SessionForProject(resolveProjectRoot(cwd))
 }
 
 func daemonNotRunningError(session string) string {
@@ -27,7 +37,7 @@ func daemonNotRunningError(session string) string {
 }
 
 func sessionClient(cmd *cobra.Command) (*ipc.Client, string) {
-	session := requireSession(cmd)
+	session := resolveSession(cmd)
 	client := ipc.NewClient(session)
 	if !client.IsRunning() {
 		d := daemon.New(session)

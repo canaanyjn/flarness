@@ -12,7 +12,7 @@ var stopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the Flarness daemon",
 	Run: func(cmd *cobra.Command, args []string) {
-		session := requireSession(cmd)
+		session := resolveSession(cmd)
 		client := ipc.NewClient(session)
 		if client.IsRunning() {
 			resp, err := client.Send(model.Command{Cmd: "stop"})
