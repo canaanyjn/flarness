@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/painting.dart' show MatrixUtils;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
@@ -819,8 +820,95 @@ class FlarnessPluginBinding {
     ];
   }
 
-  static Map<String, Object?> _serializeSemanticsNode(SemanticsNode node) {
-    final rect = node.rect;
+  /// Maps [localRect] (transformed by [nodeToRoot]) into logical global
+  /// coordinates. The semantics tree accumulates transforms in PHYSICAL pixels
+  /// (the device pixel ratio is baked into a transform near the root), so the
+  /// transformed rect is divided by [dpr] to yield logical coordinates that
+  /// match RenderBox.localToGlobal and the positions ext.flarness.tapAt uses.
+  static ui.Rect _toLogicalGlobalRect(
+    Matrix4 nodeToRoot,
+    ui.Rect localRect,
+    double dpr,
+  ) {
+    final ui.Rect physical = MatrixUtils.transformRect(nodeToRoot, localRect);
+    if (dpr <= 0 || dpr == 1.0) {
+      return physical;
+    }
+    return ui.Rect.fromLTWH(
+      physical.left / dpr,
+      physical.top / dpr,
+      physical.width / dpr,
+      physical.height / dpr,
+    );
+  }
+
+  /// Composes [node]'s local->root transform by walking ancestors. Used by
+  /// tests; the serializer threads the transform top-down instead, which does
+  /// not rely on live parent pointers.
+  static Matrix4 _nodeToRootTransform(SemanticsNode node) {
+    final List<Matrix4> transforms = <Matrix4>[];
+    for (SemanticsNode? current = node;
+        current != null;
+        current = current.parent) {
+      final Matrix4? transform = current.transform;
+      if (transform != null) {
+        transforms.add(transform);
+      }
+    }
+    final Matrix4 global = Matrix4.identity();
+    for (int i = transforms.length - 1; i >= 0; i--) {
+      global.multiply(transforms[i]);
+    }
+    return global;
+  }
+
+  /// Device pixel ratio used to convert the physical semantics coordinate space
+  /// back to logical pixels.
+  static double _semanticsDevicePixelRatio() {
+    final List<RenderView> views =
+        RendererBinding.instance.renderViews.toList(growable: false);
+    for (final RenderView view in views) {
+      final double dpr = view.flutterView.devicePixelRatio;
+      if (dpr > 0) {
+        return dpr;
+      }
+    }
+    final double implicit =
+        ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 0;
+    if (implicit > 0) {
+      return implicit;
+    }
+    final Iterable<ui.FlutterView> platformViews =
+        ui.PlatformDispatcher.instance.views;
+    return platformViews.isNotEmpty
+        ? platformViews.first.devicePixelRatio
+        : 1.0;
+  }
+
+  @visibleForTesting
+  static ui.Rect debugGlobalRectForTest(SemanticsNode node) =>
+      _toLogicalGlobalRect(
+        _nodeToRootTransform(node),
+        node.rect,
+        _semanticsDevicePixelRatio(),
+      );
+
+  static Map<String, Object?> _serializeSemanticsNode(
+    SemanticsNode node, {
+    Matrix4? parentToRoot,
+    double? dpr,
+  }) {
+    // Thread the accumulated parent->root transform down through the recursion
+    // so a node's global rect does not depend on live parent pointers.
+    final double devicePixelRatio = dpr ?? _semanticsDevicePixelRatio();
+    final Matrix4 nodeToRoot =
+        parentToRoot == null ? Matrix4.identity() : parentToRoot.clone();
+    final Matrix4? transform = node.transform;
+    if (transform != null) {
+      nodeToRoot.multiply(transform);
+    }
+    final ui.Rect rect =
+        _toLogicalGlobalRect(nodeToRoot, node.rect, devicePixelRatio);
     final data = node.getSemanticsData();
     final traversalChildren = node.debugListChildrenInOrder(
       DebugSemanticsDumpOrder.traversalOrder,
@@ -852,7 +940,11 @@ class FlarnessPluginBinding {
       'flags': data.flagsCollection.toStrings(),
       'children': mergedChildIds
           .map((int childId) => childrenById[childId]!)
-          .map(_serializeSemanticsNode)
+          .map((SemanticsNode child) => _serializeSemanticsNode(
+                child,
+                parentToRoot: nodeToRoot,
+                dpr: devicePixelRatio,
+              ))
           .toList(growable: false),
     };
   }

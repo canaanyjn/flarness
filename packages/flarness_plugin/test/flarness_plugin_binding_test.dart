@@ -19,6 +19,51 @@ void main() {
     FlarnessPluginBinding.debugResetForTest();
   });
 
+  testWidgets('serializes semantics rect in global coordinates', (
+    WidgetTester tester,
+  ) async {
+    // ensureInitialized() enables semantics via the plugin's own handle, which
+    // debugResetForTest() disposes at the end of this test.
+    FlarnessPluginBinding.ensureInitialized();
+
+    const Key target = Key('flarness-rect-target');
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              left: 100,
+              top: 200,
+              width: 60,
+              height: 40,
+              child: Semantics(
+                key: target,
+                label: 'target',
+                container: true,
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final SemanticsNode node = tester.getSemantics(find.byKey(target));
+    final Rect expected = tester.getRect(find.byKey(target));
+    final Rect global = FlarnessPluginBinding.debugGlobalRectForTest(node);
+
+    expect(global.left, moreOrLessEquals(expected.left, epsilon: 0.5));
+    expect(global.top, moreOrLessEquals(expected.top, epsilon: 0.5));
+    expect(global.width, moreOrLessEquals(expected.width, epsilon: 0.5));
+    expect(global.height, moreOrLessEquals(expected.height, epsilon: 0.5));
+    expect(global.left, greaterThan(50));
+    expect(global.top, greaterThan(150));
+
+    FlarnessPluginBinding.debugResetForTest();
+  });
+
   test('rejects screenshot capture with no render views', () {
     expect(
       () => FlarnessPluginBinding.debugSelectScreenshotRenderView(
