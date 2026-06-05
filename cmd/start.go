@@ -24,9 +24,18 @@ var (
 )
 
 const (
-	daemonReadyTimeout  = 10 * time.Second
-	flutterReadyTimeout = 90 * time.Second
-	startPollInterval   = 250 * time.Millisecond
+	daemonReadyTimeout = 10 * time.Second
+	// flutterReadyTimeout bounds the whole "launch -> running" window. It has to
+	// cover a cold native build (iOS/Android builds alone can exceed 90s) plus
+	// the app reaching first frame, so it is generous.
+	flutterReadyTimeout = 180 * time.Second
+	// appStartGrace is a fresh window granted once the VM service debug URL is
+	// observed (i.e. the build finished). app.started — the only event that
+	// flips state to "running" — fires last, after first frame, which can lag on
+	// heavy debug apps. Resetting the deadline here prevents a slow build from
+	// eating the entire readiness budget.
+	appStartGrace     = 120 * time.Second
+	startPollInterval = 250 * time.Millisecond
 )
 
 var startCmd = &cobra.Command{
@@ -179,6 +188,7 @@ func waitForStartedSession(d *daemon.Daemon, client *ipc.Client) (map[string]any
 	}
 
 	flutterDeadline := time.Now().Add(flutterReadyTimeout)
+	debugURLSeen := false
 	for time.Now().Before(flutterDeadline) {
 		resp, err := client.Send(model.Command{Cmd: "status"})
 		if err != nil {
@@ -195,6 +205,18 @@ func waitForStartedSession(d *daemon.Daemon, client *ipc.Client) (map[string]any
 		status, ok := resp.Data.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("invalid startup status response for session %s", client.Session())
+		}
+
+		// Once the VM service debug URL is available the native build has
+		// finished, so grant a fresh window for app.started (first frame).
+		// This keeps a long build from consuming the app-start budget.
+		if !debugURLSeen {
+			if url, _ := status["url"].(string); url != "" {
+				debugURLSeen = true
+				if grace := time.Now().Add(appStartGrace); grace.After(flutterDeadline) {
+					flutterDeadline = grace
+				}
+			}
 		}
 
 		state, _ := status["flutter_state"].(string)
