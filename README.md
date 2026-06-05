@@ -60,6 +60,28 @@ All commands return a JSON object with a `status` field.
 flarness app start --project /path/to/flutter_project --device chrome
 ```
 
+### Targeting a session (default: current directory)
+
+Every project gets one daemon, addressed by a `session` id derived from the
+project's absolute path. You rarely need to pass it: when `--session` is
+omitted, flarness resolves the session from the **Flutter app root containing
+your current working directory** — it walks up to the nearest `pubspec.yaml`
+that has a `lib/main.dart` (or a platform directory), skipping nested package
+pubspecs in a monorepo.
+
+```bash
+cd /path/to/worktree/apps/mobile        # or any subdirectory of it
+flarness app status                     # targets this worktree's daemon
+flarness observe screenshot             # no --session needed
+```
+
+This makes flarness **git-worktree friendly**: commands run from inside a
+worktree always target that worktree's daemon, never another checkout's,
+because each path hashes to a different session. Pass `--session <id>` (or
+`--project <path|alias>`) only to target a project other than the one you are
+standing in — but note a remembered `--session` can point at a stale or wrong
+worktree, so prefer the cwd default or verify with `flarness app status`.
+
 ### Configure a Flutter wrapper command
 If your project needs a wrapper instead of calling `flutter` directly, add it to `~/.flarness/config.yaml`:
 
